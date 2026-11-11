@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16
+    container_name: club_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-club}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-club}
+      POSTGRES_DB: ${POSTGRES_DB:-club_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - club_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-club} -d ${POSTGRES_DB:-club_db}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  club_pgdata:

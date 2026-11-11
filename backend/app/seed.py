@@ -1,0 +1,269 @@
+"""Наповнення бази демонстраційними даними.
+
+Запуск (з папки backend, після `alembic upgrade head`):
+
+    python -m app.seed            # наповнити порожню базу
+    python -m app.seed --reset    # ВИДАЛИТИ ВСІ дані з усіх таблиць і наповнити заново
+
+Усі імена, телефони та адреси вигадані.
+"""
+import argparse
+from datetime import datetime, time, timedelta
+from decimal import ROUND_HALF_UP, Decimal
+
+from sqlalchemy import delete, func, select
+from sqlalchemy.orm import Session
+
+from . import models
+from .database import Base, SessionLocal
+from .security import hash_password
+
+CENT = Decimal("0.01")
+
+# Робочі місця: тип кожного місця по порядку номерів
+LAYOUT = {
+    0: ["Standard"] * 5 + ["VIP"] * 2 + ["PlayStation"],
+    1: ["Standard"] * 4 + ["VIP"] * 2,
+}
+
+# (ПІБ, телефон, email, днів тому зареєстрований, бонуси)
+CLIENTS = [
+    ("Олександр Коваленко", "+380670000001", "o.kovalenko@example.com", 90, "120.00"),
+    ("Марія Шевченко", "+380670000002", None, 75, "0.00"),
+    ("Дмитро Бондаренко", "+380670000003", "d.bondarenko@example.com", 60, "35.50"),
+    ("Анна Ткаченко", "+380670000004", None, 45, "0.00"),
+    ("Іван Мельник", "+380670000005", "i.melnyk@example.com", 40, "210.00"),
+    ("Софія Кравченко", "+380670000006", None, 30, "15.00"),
+    ("Андрій Олійник", "+380670000007", "a.oliynyk@example.com", 21, "0.00"),
+    ("Юлія Лисенко", "+380670000008", None, 10, "60.00"),
+]
+
+# (клуб, ПІБ, посада, днів тому прийнятий) - посади з оргструктури клубу
+STAFF = [
+    (0, "Віктор Романенко", "Директор клубу", 700),
+    (0, "Наталія Гнатюк", "Заступник директора (адміністратор клубу)", 600),
+    (0, "Богдан Савчук", "Оператор-адміністратор залу", 400),
+    (0, "Олена Вовк", "Оператор-адміністратор залу", 250),
+    (0, "Тарас Пономаренко", "Системний адміністратор", 500),
+    (0, "Ірина Остапенко", "Бухгалтер", 450),
+    (0, "Катерина Руденко", "Менеджер з реклами та маркетингу", 300),
+    (0, "Максим Гаврилюк", "Менеджер з організації турнірів та заходів", 280),
+    (1, "Оксана Левченко", "Заступник директора (адміністратор клубу)", 320),
+    (1, "Денис Мороз", "Оператор-адміністратор залу", 150),
+    (1, "Павло Яковенко", "Системний адміністратор", 200),
+]
+
+# Завершені сеанси:
+# (клієнт, клуб, № місця, тариф, днів тому, година початку, хвилин, спосіб оплати)
+COMPLETED_SESSIONS = [
+    (0, 0, 1, "std", 6, 15, 120, "картка"),
+    (1, 0, 6, "vip", 6, 18, 180, "готівка"),
+    (2, 0, 8, "ps", 5, 16, 90, "картка"),
+    (3, 0, 2, "std", 4, 19, 60, "готівка"),
+    (4, 1, 1, "std", 4, 14, 150, "картка"),
+    (5, 1, 5, "vip", 3, 20, 120, "бонуси"),
+    (6, 0, 3, "night", 3, 23, 240, "готівка"),
+    (7, 1, 2, "std", 2, 17, 90, "готівка"),
+    (0, 0, 7, "vip", 1, 19, 120, "картка"),
+    (2, 1, 3, "std", 1, 15, 60, "бонуси"),
+]
+
+# (клуб, категорія, сума, днів тому, опис)
+EXPENSES = [
+    (0, "оренда", "15000.00", 20, "Оренда приміщення за місяць"),
+    (0, "комунальні", "3200.00", 12, "Електроенергія та інтернет"),
+    (0, "зарплата", "48000.00", 10, "Зарплата персоналу за місяць"),
+    (0, "закупівлі", "4500.00", 7, "Напої та снеки для бару"),
+    (0, "інше", "1200.00", 5, "Реклама в соцмережах"),
+    (1, "оренда", "9000.00", 20, "Оренда приміщення за місяць"),
+    (1, "комунальні", "2100.00", 12, "Електроенергія та інтернет"),
+    (1, "закупівлі", "2600.00", 6, "Нові миші та килимки"),
+]
+
+
+def _money(value: str | Decimal) -> Decimal:
+    return Decimal(value).quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def seed(db: Session, now: datetime | None = None) -> dict[str, int]:
+    """Створює демо-дані в переданій сесії (commit робить викликач). Повертає кількість записів."""
+    now = (now or datetime.now()).replace(second=0, microsecond=0)
+    today = now.date()
+
+    # Клуби
+    clubs = [
+        models.Club(name="Cyberion Центр", address="вул. Соборна, 12", phone="+380500000001", pc_count=len(LAYOUT[0])),
+        models.Club(name="Cyberion Дніпровський", address="бул. Шевченка, 45", phone="+380500000002", pc_count=len(LAYOUT[1])),
+    ]
+    db.add_all(clubs)
+    db.flush()
+
+    # Робочі місця
+    workstations: dict[tuple[int, int], models.Workstation] = {}
+    for club_idx, types in LAYOUT.items():
+        for number, ws_type in enumerate(types, start=1):
+            ws = models.Workstation(club_id=clubs[club_idx].club_id, number=number, type=ws_type, status="вільне")
+            workstations[(club_idx, number)] = ws
+            db.add(ws)
+    workstations[(1, 4)].status = "на ремонті"
+    db.flush()
+
+    # Тарифи
+    tariffs = {
+        "std": models.Tariff(name="Стандарт", price_per_hour=_money("60"), workstation_type="Standard"),
+        "vip": models.Tariff(name="VIP", price_per_hour=_money("90"), workstation_type="VIP"),
+        "ps": models.Tariff(name="PlayStation", price_per_hour=_money("80"), workstation_type="PlayStation"),
+        "night": models.Tariff(name="Нічний Стандарт", price_per_hour=_money("40"), workstation_type="Standard"),
+    }
+    db.add_all(tariffs.values())
+    db.flush()
+
+    # Клієнти
+    clients = [
+        models.Client(
+            full_name=name, phone=phone, email=email,
+            reg_date=today - timedelta(days=days_ago), bonus_balance=_money(bonus),
+        )
+        for name, phone, email, days_ago, bonus in CLIENTS
+    ]
+    db.add_all(clients)
+    db.flush()
+
+    # Співробітники
+    staff_members = [
+        models.Staff(
+            club_id=clubs[club_idx].club_id, full_name=name, position=position,
+            hire_date=today - timedelta(days=days_ago),
+        )
+        for club_idx, name, position, days_ago in STAFF
+    ]
+    db.add_all(staff_members)
+    db.flush()
+
+    # Користувачі для всіх 6 ролей (пароль: admin1234)
+    default_pw_hash = hash_password("admin1234")
+    users = [
+        models.AppUser(
+            username="director", password_hash=default_pw_hash, full_name="Віктор Романенко",
+            role="director", club_id=None, staff_id=staff_members[0].staff_id,
+        ),
+        models.AppUser(
+            username="hall_admin", password_hash=default_pw_hash, full_name="Богдан Савчук",
+            role="hall_admin", club_id=clubs[0].club_id, staff_id=staff_members[2].staff_id,
+        ),
+        models.AppUser(
+            username="accountant", password_hash=default_pw_hash, full_name="Ірина Остапенко",
+            role="accountant", club_id=clubs[0].club_id, staff_id=staff_members[5].staff_id,
+        ),
+        models.AppUser(
+            username="tournament_mgr", password_hash=default_pw_hash, full_name="Максим Гаврилюк",
+            role="tournament_manager", club_id=clubs[0].club_id, staff_id=staff_members[7].staff_id,
+        ),
+        models.AppUser(
+            username="marketing_mgr", password_hash=default_pw_hash, full_name="Катерина Руденко",
+            role="marketing_manager", club_id=clubs[0].club_id, staff_id=staff_members[6].staff_id,
+        ),
+        models.AppUser(
+            username="sysadmin", password_hash=default_pw_hash, full_name="Тарас Пономаренко",
+            role="sysadmin", club_id=None, staff_id=staff_members[4].staff_id,
+        ),
+    ]
+    db.add_all(users)
+    db.flush()
+
+    # Завершені сеанси та оплати
+    for client_idx, club_idx, number, tariff_key, days_ago, hour, minutes, method in COMPLETED_SESSIONS:
+        tariff = tariffs[tariff_key]
+        start = datetime.combine(today - timedelta(days=days_ago), time(hour))
+        end = start + timedelta(minutes=minutes)
+        session = models.GameSession(
+            client_id=clients[client_idx].client_id,
+            workstation_id=workstations[(club_idx, number)].workstation_id,
+            tariff_id=tariff.tariff_id,
+            price_per_hour=tariff.price_per_hour,
+            start_time=start, end_time=end, status="завершений",
+        )
+        db.add(session)
+        db.flush()
+        amount = _money(Decimal(minutes) / Decimal(60) * tariff.price_per_hour)
+        db.add(models.Payment(session_id=session.session_id, amount=amount, payment_date=end, method=method))
+
+    # Один активний сеанс: місце зайняте, оплати ще немає
+    active_ws = workstations[(0, 3)]
+    active_ws.status = "зайняте"
+    db.add(models.GameSession(
+        client_id=clients[1].client_id,
+        workstation_id=active_ws.workstation_id,
+        tariff_id=tariffs["std"].tariff_id,
+        price_per_hour=tariffs["std"].price_per_hour,
+        start_time=now - timedelta(minutes=45), end_time=None, status="активний",
+    ))
+
+    # Витрати
+    db.add_all(
+        models.Expense(
+            club_id=clubs[club_idx].club_id, category=category, amount=_money(amount),
+            expense_date=today - timedelta(days=days_ago), description=description,
+        )
+        for club_idx, category, amount, days_ago, description in EXPENSES
+    )
+
+    # Турніри та участь
+    upcoming = models.Tournament(
+        club_id=clubs[0].club_id, name="CS2 Weekend Cup", game="Counter-Strike 2",
+        date=today + timedelta(days=9), prize_fund=_money("5000"),
+    )
+    finished = models.Tournament(
+        club_id=clubs[1].club_id, name="FC 25 League Night", game="EA FC 25",
+        date=today - timedelta(days=8), prize_fund=_money("2000"),
+    )
+    db.add_all([upcoming, finished])
+    db.flush()
+
+    for client_idx in (0, 2, 4, 6):  # майбутній турнір: місць ще немає
+        db.add(models.Participation(tournament_id=upcoming.tournament_id, client_id=clients[client_idx].client_id, place=None))
+    for place, client_idx in enumerate((5, 1, 7, 3), start=1):  # завершений турнір: підсумки
+        db.add(models.Participation(tournament_id=finished.tournament_id, client_id=clients[client_idx].client_id, place=place))
+    db.flush()
+
+    return {
+        table.name: db.scalar(select(func.count()).select_from(table))
+        for table in Base.metadata.sorted_tables
+    }
+
+
+def wipe(db: Session) -> None:
+    """Видаляє всі рядки з усіх таблиць (у порядку, що поважає зовнішні ключі)."""
+    for table in reversed(Base.metadata.sorted_tables):
+        db.execute(delete(table))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Наповнити базу демонстраційними даними.")
+    parser.add_argument(
+        "--reset", action="store_true",
+        help="спочатку ВИДАЛИТИ всі дані з усіх таблиць, потім створити демо-дані",
+    )
+    args = parser.parse_args()
+
+    with SessionLocal() as db:
+        has_data = db.scalar(select(func.count()).select_from(models.Club)) or db.scalar(
+            select(func.count()).select_from(models.Client)
+        )
+        if has_data and not args.reset:
+            print("У базі вже є дані, нічого не змінено.")
+            print("Щоб видалити їх і створити демо-дані заново, запустіть з --reset.")
+            return
+        if args.reset:
+            wipe(db)
+        counts = seed(db)
+        db.commit()
+
+    print("Демо-дані створено:")
+    for name, count in counts.items():
+        if name != "alembic_version":
+            print(f"  {name}: {count}")
+
+
+if __name__ == "__main__":
+    main()
