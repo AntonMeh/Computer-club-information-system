@@ -120,3 +120,4 @@ def test_login_is_case_insensitive_and_updates_last_login(client, db):
     assert r.status_code == 200
     db.refresh(user)
     assert user.last_login_at is not None
+

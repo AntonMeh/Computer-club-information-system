@@ -112,3 +112,4 @@ def test_change_password(client, director_user):
     # Вхід з новим паролем успішний
     r = client.post("/auth/login", data={"username": "test_director", "password": "NewPassword2026"})
     assert r.status_code == 200
+
