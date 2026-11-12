@@ -85,6 +85,44 @@ def _money(value: str | Decimal) -> Decimal:
     return Decimal(value).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
+# Демо-користувачі: по одному на кожну роль.
+# (логін, ПІБ співробітника, роль, назва клубу або None = уся мережа)
+DEMO_PASSWORD = "demo1234"
+DEMO_USERS = [
+    ("director", "Віктор Романенко", "director", None),
+    ("hall_admin", "Богдан Савчук", "hall_admin", "Cyberion Центр"),
+    ("accountant", "Ірина Остапенко", "accountant", "Cyberion Центр"),
+    ("tournaments", "Максим Гаврилюк", "tournament_manager", "Cyberion Центр"),
+    ("marketing", "Катерина Руденко", "marketing_manager", "Cyberion Центр"),
+    ("sysadmin", "Тарас Пономаренко", "sysadmin", "Cyberion Центр"),
+]
+
+
+def seed_users(db: Session) -> int:
+    """Створює демо-користувачів, яких ще немає. Клуб і співробітника шукає за назвою/ПІБ.
+
+    Працює й на вже заповненій базі (python -m app.seed --users). Повертає кількість створених.
+    """
+    password_hash = hash_password(DEMO_PASSWORD)
+    created = 0
+    for username, full_name, role, club_name in DEMO_USERS:
+        if db.scalar(select(models.AppUser).where(models.AppUser.username == username)):
+            continue
+        club_id = None
+        if club_name is not None:
+            club_id = db.scalar(select(models.Club.club_id).where(models.Club.name == club_name))
+            if club_id is None:
+                raise RuntimeError(f"Клуб «{club_name}» не знайдено: спершу створіть демо-дані")
+        staff_id = db.scalar(select(models.Staff.staff_id).where(models.Staff.full_name == full_name))
+        db.add(models.AppUser(
+            username=username, password_hash=password_hash, full_name=full_name,
+            role=role, club_id=club_id, staff_id=staff_id,
+        ))
+        created += 1
+    db.flush()
+    return created
+
+
 def seed(db: Session, now: datetime | None = None) -> dict[str, int]:
     """Створює демо-дані в переданій сесії (commit робить викликач). Повертає кількість записів."""
     now = (now or datetime.now()).replace(second=0, microsecond=0)
@@ -140,36 +178,7 @@ def seed(db: Session, now: datetime | None = None) -> dict[str, int]:
     db.add_all(staff_members)
     db.flush()
 
-    # Користувачі для всіх 6 ролей (пароль: admin1234)
-    default_pw_hash = hash_password("admin1234")
-    users = [
-        models.AppUser(
-            username="director", password_hash=default_pw_hash, full_name="Віктор Романенко",
-            role="director", club_id=None, staff_id=staff_members[0].staff_id,
-        ),
-        models.AppUser(
-            username="hall_admin", password_hash=default_pw_hash, full_name="Богдан Савчук",
-            role="hall_admin", club_id=clubs[0].club_id, staff_id=staff_members[2].staff_id,
-        ),
-        models.AppUser(
-            username="accountant", password_hash=default_pw_hash, full_name="Ірина Остапенко",
-            role="accountant", club_id=clubs[0].club_id, staff_id=staff_members[5].staff_id,
-        ),
-        models.AppUser(
-            username="tournament_mgr", password_hash=default_pw_hash, full_name="Максим Гаврилюк",
-            role="tournament_manager", club_id=clubs[0].club_id, staff_id=staff_members[7].staff_id,
-        ),
-        models.AppUser(
-            username="marketing_mgr", password_hash=default_pw_hash, full_name="Катерина Руденко",
-            role="marketing_manager", club_id=clubs[0].club_id, staff_id=staff_members[6].staff_id,
-        ),
-        models.AppUser(
-            username="sysadmin", password_hash=default_pw_hash, full_name="Тарас Пономаренко",
-            role="sysadmin", club_id=None, staff_id=staff_members[4].staff_id,
-        ),
-    ]
-    db.add_all(users)
-    db.flush()
+    seed_users(db)
 
     # Завершені сеанси та оплати
     for client_idx, club_idx, number, tariff_key, days_ago, hour, minutes, method in COMPLETED_SESSIONS:
@@ -244,9 +253,19 @@ def main() -> None:
         "--reset", action="store_true",
         help="спочатку ВИДАЛИТИ всі дані з усіх таблиць, потім створити демо-дані",
     )
+    parser.add_argument(
+        "--users", action="store_true",
+        help="лише додати демо-користувачів, яких ще немає (наявні дані не змінюються)",
+    )
     args = parser.parse_args()
 
     with SessionLocal() as db:
+        if args.users:
+            created = seed_users(db)
+            db.commit()
+            print(f"Створено користувачів: {created}. Пароль усіх демо-користувачів: {DEMO_PASSWORD}")
+            return
+
         has_data = db.scalar(select(func.count()).select_from(models.Club)) or db.scalar(
             select(func.count()).select_from(models.Client)
         )
@@ -263,6 +282,7 @@ def main() -> None:
     for name, count in counts.items():
         if name != "alembic_version":
             print(f"  {name}: {count}")
+    print(f"Пароль усіх демо-користувачів: {DEMO_PASSWORD}")
 
 
 if __name__ == "__main__":

@@ -20,3 +20,14 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+INSECURE_SECRET_KEYS = {"dev-secret-change-me", "change-me", ""}
+
+
+def check_secret_key() -> None:
+    """Не дає запустити API з ключем за замовчуванням: ним можна підробити токен будь-якого користувача."""
+    if settings.secret_key in INSECURE_SECRET_KEYS or len(settings.secret_key) < 32:
+        raise RuntimeError(
+            "SECRET_KEY не задано або він занадто короткий. Додайте в backend/.env рядок SECRET_KEY=..., "
+            'згенерувавши значення командою: python -c "import secrets; print(secrets.token_urlsafe(48))"'
+        )

@@ -1,3 +1,9 @@
+import os
+
+# Тестові налаштування задаються до імпорту застосунку (змінні оточення мають пріоритет над .env)
+os.environ["SECRET_KEY"] = "test-secret-key-that-is-long-enough-for-hs256"
+os.environ["BCRYPT_ROUNDS"] = "4"  # швидке хешування в тестах
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

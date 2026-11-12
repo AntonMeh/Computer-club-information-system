@@ -3,9 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from .config import settings
+from .config import check_secret_key, settings
 from .database import get_db
 from .routers import auth, clients, clubs
+
+check_secret_key()
 
 app = FastAPI(title="Club system API", version="0.1.0")
 

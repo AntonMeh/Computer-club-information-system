@@ -54,3 +54,18 @@ def test_wipe_then_seed_again(db):
     db.commit()
     assert db.scalars(select(models.Club)).first() is None
     assert seed(db) == first
+
+
+def test_seed_users_one_per_role_and_idempotent(db):
+    from app.permissions import ROLE_LABELS
+    from app.seed import seed_users
+
+    seed(db)
+    db.commit()
+    users = db.scalars(select(models.AppUser)).all()
+    assert {u.role for u in users} == set(ROLE_LABELS)
+    for u in users:
+        # Спец. 7.13: клуб обов'язковий для всіх ролей, крім Директора
+        assert (u.club_id is None) == (u.role == "director"), u.username
+        assert u.staff_id is not None
+    assert seed_users(db) == 0  # повторний запуск нічого не дублює
