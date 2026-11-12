@@ -404,8 +404,8 @@ h3 {
 .content {
   padding: 24px;
   min-width: 0;
-  max-width: 1280px;
   width: 100%;
+  flex: 1;
 }
 
 .page-section {
@@ -684,6 +684,55 @@ th.actions-col {
   color: var(--muted);
   padding: 16px 20px;
   margin: 0;
+}
+
+/* ---------- Пагінація під списком ---------- */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 8px 0 4px;
+}
+
+.pagination-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.pagination-arrow:hover:not(:disabled) {
+  background: var(--paper);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pagination-arrow:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pagination-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.pagination-sep {
+  color: var(--muted);
+}
+
+.pagination-remaining {
+  color: var(--muted);
 }
 
 /* ---------- Стани: порожньо, помилка, скелетон ---------- */

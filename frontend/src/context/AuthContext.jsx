@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { api, getToken, onUnauthorized, setToken } from "../api.js";
 
 const AuthContext = createContext(null);
@@ -16,6 +16,9 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(() => Boolean(getToken()));
   const [clubs, setClubs] = useState([]);
+  const userRef = useRef(null);
+  const authSeqRef = useRef(0);
+
   const [selectedClubId, setSelectedClubIdState] = useState(() => {
     try {
       const saved = localStorage.getItem(CLUB_STORAGE_KEY);
@@ -32,23 +35,31 @@ export function AuthProvider({ children }) {
     }
   });
 
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
   const logout = useCallback(() => {
+    authSeqRef.current += 1;
     api.auth.logout();
+    userRef.current = null;
     setUser(null);
     setClubs([]);
   }, []);
 
   useEffect(() => {
     onUnauthorized(() => {
+      authSeqRef.current += 1;
       setToken(null);
+      userRef.current = null;
       setUser(null);
     });
     return () => onUnauthorized(null);
   }, []);
 
-  const reloadClubs = useCallback(async (currentUser = user) => {
-    if (!currentUser || currentUser.must_change_password) return;
-    // Якщо користувач прив'язаний до одного клубу, його клуб відомий із /auth/me
+  const reloadClubs = useCallback(async (targetUser) => {
+    const currentUser = targetUser ?? userRef.current;
+    if (!currentUser || currentUser.must_change_password || !getToken()) return;
     if (currentUser.club_id != null) {
       setClubs([
         {
@@ -58,26 +69,40 @@ export function AuthProvider({ children }) {
       ]);
       return;
     }
-    // Для користувачів з доступом до всієї мережі підвантажуємо перелік клубів
     if (currentUser.permissions?.clubs) {
       try {
         const data = await api.get("/clubs");
         const list = Array.isArray(data) ? data : data?.items || [];
         setClubs(list);
+        setSelectedClubIdState((prev) => {
+          if (prev != null && !list.some((c) => c.club_id === prev)) {
+            try {
+              localStorage.setItem(CLUB_STORAGE_KEY, "all");
+            } catch {
+              /* ігноруємо */
+            }
+            return null;
+          }
+          return prev;
+        });
       } catch {
         setClubs([]);
       }
     }
-  }, [user]);
+  }, []);
 
   const refreshUser = useCallback(async () => {
     if (!getToken()) {
+      userRef.current = null;
       setUser(null);
       setLoading(false);
       return null;
     }
+    const seq = ++authSeqRef.current;
     try {
       const me = await api.auth.me();
+      if (seq !== authSeqRef.current || !getToken()) return null;
+      userRef.current = me;
       setUser(me);
       if (me.club_id != null) {
         setSelectedClubIdState(me.club_id);
@@ -85,14 +110,20 @@ export function AuthProvider({ children }) {
       await reloadClubs(me);
       return me;
     } catch {
-      setToken(null);
-      setUser(null);
+      if (seq === authSeqRef.current) {
+        setToken(null);
+        userRef.current = null;
+        setUser(null);
+      }
       return null;
     } finally {
-      setLoading(false);
+      if (seq === authSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [reloadClubs]);
 
+  // Перевіряємо поточну сесію лише один раз при старті застосунку
   useEffect(() => {
     if (getToken()) {
       refreshUser();
@@ -101,19 +132,25 @@ export function AuthProvider({ children }) {
     }
   }, [refreshUser]);
 
-  const login = useCallback(async (username, password) => {
-    const res = await api.auth.login(username, password);
-    setUser(res.user);
-    if (res.user.club_id != null) {
-      setSelectedClubIdState(res.user.club_id);
-    }
-    await reloadClubs(res.user);
-    return res.user;
-  }, [reloadClubs]);
+  const login = useCallback(
+    async (username, password) => {
+      const seq = ++authSeqRef.current;
+      const res = await api.auth.login(username, password);
+      if (seq !== authSeqRef.current) return res.user;
+      userRef.current = res.user;
+      setUser(res.user);
+      if (res.user.club_id != null) {
+        setSelectedClubIdState(res.user.club_id);
+      }
+      await reloadClubs(res.user);
+      return res.user;
+    },
+    [reloadClubs]
+  );
 
   const setSelectedClubId = useCallback(
     (clubId) => {
-      if (user?.club_id != null) return; // прив'язаний користувач не може змінити клуб
+      if (user?.club_id != null) return;
       const normalized = clubId ? Number(clubId) : null;
       setSelectedClubIdState(normalized);
       try {

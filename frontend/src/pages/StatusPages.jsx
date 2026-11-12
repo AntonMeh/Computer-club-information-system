@@ -68,3 +68,4 @@ export function SectionPlaceholderPage({ title, section, description }) {
     </section>
   );
 }
+

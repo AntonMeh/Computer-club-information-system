@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { api } from "../api.js";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
 import Drawer from "../components/Drawer.jsx";
@@ -22,6 +22,15 @@ function buildPayload(fields, form) {
   return payload;
 }
 
+function formatRemainingPages(remaining) {
+  if (remaining <= 0) return "остання сторінка";
+  const mod10 = remaining % 10;
+  const mod100 = remaining % 100;
+  if (mod10 === 1 && mod100 !== 11) return `ще ${remaining} сторінка`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return `ще ${remaining} сторінки`;
+  return `ще ${remaining} сторінок`;
+}
+
 export default function ResourcePage({
   title,
   section,
@@ -32,6 +41,7 @@ export default function ResourcePage({
   fields,
   emptyText,
   addLabel,
+  pageSize = 17,
   onChanged,
 }) {
   const { can } = useAuth();
@@ -41,6 +51,7 @@ export default function ResourcePage({
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form, setForm] = useState(() => blankForm(fields));
@@ -66,8 +77,21 @@ export default function ResourcePage({
   }, [endpoint]);
 
   useEffect(() => {
+    setPage(1);
     load();
   }, [load]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const startIdx = (currentPage - 1) * pageSize;
+  const visibleRows = rows.slice(startIdx, startIdx + pageSize);
+  const remainingPages = Math.max(0, totalPages - currentPage);
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
 
   const openCreateDrawer = () => {
     setForm(blankForm(fields));
@@ -77,14 +101,23 @@ export default function ResourcePage({
 
   async function onSubmit(e) {
     e.preventDefault();
-    setSaving(true);
     setFormError("");
+
+    for (const f of fields) {
+      if (f.required && String(form[f.name] ?? "").trim() === "") {
+        setFormError(`Заповніть обов'язкове поле «${f.label}»`);
+        return;
+      }
+    }
+
+    setSaving(true);
     try {
       await api.create(endpoint, buildPayload(fields, form));
       setForm(blankForm(fields));
       setDrawerOpen(false);
       toast.success("Запис успішно додано");
       await load();
+      setPage(Math.max(1, Math.ceil((rows.length + 1) / pageSize)));
       onChanged?.();
     } catch (err) {
       setFormError(err.message);
@@ -146,7 +179,7 @@ export default function ResourcePage({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {visibleRows.map((row) => (
                 <tr key={row[idKey]}>
                   {columns.map((c) => (
                     <td key={c.key} className={c.numeric ? "num tabular-nums" : undefined}>
@@ -171,6 +204,38 @@ export default function ResourcePage({
           </table>
         )}
       </div>
+
+      {!loading && !error && rows.length > 0 && (
+        <nav className="pagination-bar" aria-label="Навігація сторінками">
+          <button
+            type="button"
+            className="pagination-arrow"
+            aria-label="Попередня сторінка"
+            disabled={currentPage <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            <ChevronLeft size={18} aria-hidden="true" />
+          </button>
+
+          <div className="pagination-info tabular-nums">
+            <span className="pagination-page">
+              Сторінка <strong>{currentPage}</strong> з <strong>{totalPages}</strong>
+            </span>
+            <span className="pagination-sep">·</span>
+            <span className="pagination-remaining">{formatRemainingPages(remainingPages)}</span>
+          </div>
+
+          <button
+            type="button"
+            className="pagination-arrow"
+            aria-label="Наступна сторінка"
+            disabled={currentPage >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          >
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+        </nav>
+      )}
 
       <Drawer
         open={drawerOpen}

@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     """Налаштування застосунку. Значення беруться зі змінних оточення або з файлу backend/.env."""
 
     database_url: str = "postgresql+psycopg://club:club@localhost:5432/club_db"
-    cors_origins: list[str] = ["http://localhost:5173"]
+    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
     # Автентифікація (JWT). У .env обов'язково задайте власний SECRET_KEY.
     secret_key: str = "dev-secret-change-me"

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
+import { getToken } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const DEMO_ACCOUNTS = [
@@ -30,7 +31,7 @@ export default function LoginPage() {
 
   const redirectTo = location.state?.from || "/";
 
-  if (user) {
+  if (user && getToken()) {
     return <Navigate to={user.must_change_password ? "/profile" : redirectTo} replace />;
   }
 
@@ -142,3 +143,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

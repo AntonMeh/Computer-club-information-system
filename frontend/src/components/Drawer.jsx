@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { X } from "lucide-react";
 
 /**
@@ -6,13 +6,13 @@ import { X } from "lucide-react";
  * Закриття з незбереженими змінами (isDirty) питає підтвердження.
  */
 export default function Drawer({ open, title, isDirty = false, onClose, children, footer }) {
-  const attemptClose = () => {
+  const attemptClose = useCallback(() => {
     if (isDirty) {
       const ok = window.confirm("Є незбережені зміни. Закрити панель без збереження?");
       if (!ok) return;
     }
     onClose();
-  };
+  }, [isDirty, onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -24,7 +24,7 @@ export default function Drawer({ open, title, isDirty = false, onClose, children
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  });
+  }, [open, attemptClose]);
 
   if (!open) return null;
 

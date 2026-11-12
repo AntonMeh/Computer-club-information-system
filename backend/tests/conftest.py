@@ -6,7 +6,7 @@ os.environ["BCRYPT_ROUNDS"] = "4"  # швидке хешування в тест
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -22,6 +22,11 @@ def client():
     engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
+
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_fks(dbapi_conn, _):
+        dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
     Base.metadata.create_all(engine)
     TestingSession = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
@@ -53,6 +58,7 @@ def auth_client(client):
     db.add(user)
     db.commit()
     db.refresh(user)
+    db.close()
 
     token = create_access_token(user.user_id)
     client.headers["Authorization"] = f"Bearer {token}"

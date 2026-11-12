@@ -8,15 +8,19 @@ import jwt
 from .config import settings
 
 ALGORITHM = "HS256"
-# Пароль: мінімум 8 символів, хоча б одна літера й одна цифра (сторінка «Користувачі»)
-PASSWORD_RULE = "Пароль має містити щонайменше 8 символів, літеру й цифру"
+MAX_PASSWORD_BYTES = 72
+# Пароль: мінімум 8 символів (не більше 72 байтів UTF-8), хоча б одна літера й одна цифра
+PASSWORD_RULE = "Пароль має містити від 8 до 36 символів, щонайменше одну літеру й одну цифру"
 _LETTER = re.compile(r"[^\W\d_]")
 _DIGIT = re.compile(r"\d")
 
 
 def hash_password(password: str) -> str:
+    encoded = password.encode("utf-8")
+    if len(encoded) > MAX_PASSWORD_BYTES:
+        raise ValueError(PASSWORD_RULE)
     salt = bcrypt.gensalt(rounds=settings.bcrypt_rounds)
-    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("ascii")
+    return bcrypt.hashpw(encoded, salt).decode("ascii")
 
 
 def verify_password(password: str, password_hash: str) -> bool:
@@ -27,7 +31,12 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def password_is_strong(password: str) -> bool:
-    return len(password) >= 8 and bool(_LETTER.search(password)) and bool(_DIGIT.search(password))
+    return (
+        len(password) >= 8
+        and len(password.encode("utf-8")) <= MAX_PASSWORD_BYTES
+        and bool(_LETTER.search(password))
+        and bool(_DIGIT.search(password))
+    )
 
 
 def create_access_token(user_id: int) -> str:
@@ -47,4 +56,3 @@ def decode_access_token(token: str) -> int | None:
         return int(payload["sub"])
     except (jwt.PyJWTError, KeyError, ValueError):
         return None
-

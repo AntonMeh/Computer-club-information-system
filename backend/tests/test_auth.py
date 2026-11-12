@@ -97,6 +97,14 @@ def test_change_password(client, director_user):
     )
     assert r.status_code == 422
 
+    # Зміна на кириличний пароль > 72 байтів UTF-8 (40 літер = 80 байтів) -> 422, а не 500
+    r = client.post(
+        "/auth/change-password",
+        headers=headers,
+        json={"current_password": "admin1234", "new_password": "Я" * 40 + "1"},
+    )
+    assert r.status_code == 422
+
     # Зміна на валідний новий пароль
     r = client.post(
         "/auth/change-password",
