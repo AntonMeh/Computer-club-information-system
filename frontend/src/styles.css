@@ -2215,6 +2215,619 @@ th.actions-col {
   padding: 16px 20px 8px;
 }
 
+/* ---------- Етап 4: Огляд (/) та Звіти (/reports) ---------- */
+.dashboard-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.dashboard-kpi-grid-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.kpi-value-positive {
+  color: var(--success);
+}
+
+.kpi-value-negative {
+  color: var(--danger);
+}
+
+.kpi-value-warning {
+  color: var(--warning);
+}
+
+.kpi-subtext {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.kpi-delta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.kpi-delta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.kpi-delta-badge.positive {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.kpi-delta-badge.negative {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.kpi-delta-badge.neutral {
+  background: var(--neutral-bg);
+  color: var(--neutral);
+}
+
+.dashboard-mid-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.dashboard-chart-panel {
+  grid-column: span 8;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dashboard-ws-panel {
+  grid-column: span 4;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.dashboard-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dashboard-more-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Стовпчиковий графік 14 днів */
+.bar-chart-14d {
+  display: grid;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  gap: 8px;
+  height: 210px;
+  padding-top: 12px;
+  align-items: end;
+}
+
+.bar-col-14d {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bar-col-amount {
+  font-size: 11px;
+  color: var(--muted);
+  height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bar-col-track {
+  flex: 1;
+  width: 100%;
+  max-width: 36px;
+  background: var(--paper);
+  border-radius: 6px 6px 3px 3px;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.bar-col-fill {
+  width: 100%;
+  background: var(--accent);
+  border-radius: 6px 6px 0 0;
+  transition: height 0.2s ease;
+}
+
+.bar-col-fill.empty {
+  background: var(--line);
+}
+
+.bar-col-14d:hover .bar-col-fill:not(.empty) {
+  background: var(--accent-hover);
+}
+
+.bar-col-label {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Міні-сітка місць зараз */
+.ws-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 8px;
+}
+
+.ws-mini-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  text-decoration: none;
+  gap: 2px;
+  transition: transform 0.1s ease;
+}
+
+.ws-mini-tile:hover {
+  transform: translateY(-1px);
+}
+
+.ws-mini-tile.free {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+  color: var(--success);
+}
+
+.ws-mini-tile.busy {
+  background: var(--info-bg);
+  border-color: var(--info-border);
+  color: var(--info);
+}
+
+.ws-mini-tile.repair {
+  background: var(--neutral-bg);
+  border-color: var(--neutral-border);
+  color: var(--neutral);
+}
+
+.ws-mini-num {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.ws-mini-type {
+  font-size: 10px;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.ws-mini-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted);
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.ws-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ws-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.ws-legend-dot.free {
+  background: var(--success);
+}
+
+.ws-legend-dot.busy {
+  background: var(--info);
+}
+
+.ws-legend-dot.repair {
+  background: var(--neutral);
+}
+
+/* Нижній ряд Огляду (3 колонки) */
+.dashboard-bottom-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.dashboard-list-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dashboard-compact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dashboard-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.dashboard-list-item:not(.static):hover {
+  border-color: var(--accent);
+  background: var(--paper);
+}
+
+.dashboard-list-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dashboard-list-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.dashboard-list-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.muted-icon {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.dashboard-ok-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius);
+  color: var(--ink);
+}
+
+.ok-icon {
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+.dashboard-alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dashboard-alert-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius);
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.dashboard-alert-item:hover {
+  border-color: var(--warning);
+}
+
+.alert-item-icon {
+  color: var(--warning);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.dashboard-alert-text {
+  flex: 1;
+}
+
+.alert-item-arrow {
+  color: var(--warning);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.spin-icon {
+  animation: spin360 0.8s linear infinite;
+}
+
+@keyframes spin360 {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Звіти (/reports) ---------- */
+.reports-controls-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.report-tab-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.report-section-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 13px;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.chart-legend-swatch.revenue {
+  background: var(--accent);
+}
+
+.chart-legend-swatch.expense {
+  background: var(--warning);
+}
+
+.dual-bar-chart-scroll {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.dual-bar-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 220px;
+  min-width: 480px;
+  padding-top: 16px;
+}
+
+.dual-bar-group {
+  flex: 1;
+  min-width: 42px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.dual-bar-pair {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  background: var(--paper);
+  border-radius: 6px 6px 3px 3px;
+  padding: 0 4px;
+}
+
+.dual-bar-pair.single {
+  max-width: 40px;
+}
+
+.dual-bar {
+  flex: 1;
+  max-width: 18px;
+  border-radius: 4px 4px 0 0;
+  transition: height 0.2s ease;
+}
+
+.dual-bar.revenue {
+  background: var(--accent);
+}
+
+.dual-bar.expense {
+  background: var(--warning);
+}
+
+.dual-bar.zero {
+  background: var(--line);
+}
+
+.dual-bar-label {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* P&L таблиця */
+.pnl-group-row td {
+  background: var(--paper);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.pnl-indent {
+  padding-left: 32px !important;
+}
+
+.pnl-subtotal-row td {
+  font-weight: 600;
+  border-top: 1px solid var(--line);
+  background: #fafbfc;
+}
+
+.pnl-total-row td {
+  font-size: 15px;
+  font-weight: 600;
+  background: var(--accent-soft);
+}
+
+/* Пікові години та теплова карта */
+.peak-hours-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.peak-hour-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.peak-hour-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.heatmap-scroll {
+  overflow-x: auto;
+}
+
+.heatmap-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 3px;
+  min-width: 760px;
+}
+
+.heatmap-table th,
+.heatmap-table td {
+  height: 34px;
+  padding: 0 4px;
+  text-align: center;
+  border: 0;
+  font-size: 12px;
+  border-radius: 4px;
+}
+
+.heatmap-day-col,
+.heatmap-day-label {
+  text-align: left !important;
+  padding-left: 8px !important;
+  width: 52px;
+  background: transparent;
+}
+
+.heatmap-cell {
+  font-size: 11px;
+  font-weight: 500;
+  cursor: default;
+}
+
+.inline-progress-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 140px;
+}
+
+.inline-progress-track {
+  width: 80px;
+  height: 8px;
+  background: var(--paper);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.inline-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.row-most-loaded td {
+  background: #f3faf6;
+}
+
+.row-least-loaded td {
+  background: #fffcf5;
+}
+
 @media print {
   .sidebar,
   .topbar,
@@ -2241,8 +2854,18 @@ th.actions-col {
   .tariff-columns {
     grid-template-columns: 1fr;
   }
-  .kpi-grid {
+  .kpi-grid,
+  .dashboard-kpi-grid,
+  .dashboard-kpi-grid-5 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dashboard-chart-panel,
+  .dashboard-ws-panel {
+    grid-column: span 12;
+  }
+  .dashboard-bottom-grid,
+  .peak-hours-grid {
+    grid-template-columns: 1fr;
   }
 }
 

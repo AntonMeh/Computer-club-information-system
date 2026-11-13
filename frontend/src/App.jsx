@@ -5,14 +5,16 @@ import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import ClientDetailPage from "./pages/ClientDetailPage.jsx";
 import ClientsPage from "./pages/ClientsPage.jsx";
 import ClubsPage from "./pages/ClubsPage.jsx";
+import DashboardPage from "./pages/DashboardPage.jsx";
 import ExpensesPage from "./pages/ExpensesPage.jsx";
 import HallPage from "./pages/HallPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import PaymentsPage from "./pages/PaymentsPage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
+import ReportsPage from "./pages/ReportsPage.jsx";
 import SessionsPage from "./pages/SessionsPage.jsx";
 import StaffPage from "./pages/StaffPage.jsx";
-import { ForbiddenPage, NotFoundPage, SectionPlaceholderPage } from "./pages/StatusPages.jsx";
+import { ForbiddenPage, NotFoundPage } from "./pages/StatusPages.jsx";
 import TariffsPage from "./pages/TariffsPage.jsx";
 import TournamentDetailPage from "./pages/TournamentDetailPage.jsx";
 import TournamentsPage from "./pages/TournamentsPage.jsx";
@@ -70,11 +72,7 @@ export default function App() {
                 path="/"
                 element={
                   <RequireSection section="dashboard">
-                    <SectionPlaceholderPage
-                      title="Огляд"
-                      section="dashboard"
-                      description="Зведена панель стану клубу: KPI за сьогодні, виручка за 14 днів, стан місць, найближчі турніри та попередження."
-                    />
+                    <DashboardPage />
                   </RequireSection>
                 }
               />
@@ -155,11 +153,7 @@ export default function App() {
                 path="/reports"
                 element={
                   <RequireSection section="reports">
-                    <SectionPlaceholderPage
-                      title="Звіти"
-                      section="reports"
-                      description="Аналітичні звіти: фінанси, завантаженість залу, тарифи і місця, клієнти, турніри."
-                    />
+                    <ReportsPage />
                   </RequireSection>
                 }
               />

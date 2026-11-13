@@ -560,3 +560,186 @@ class TournamentRead(BaseModel):
     participants: list[ParticipantRead] = []
 
 
+# ---------- Dashboard & Reports (Етап 4) ----------
+class RevenueDayPoint(BaseModel):
+    date: date_type
+    label: str
+    amount: Decimal
+
+
+class DashboardAlert(BaseModel):
+    key: str
+    text: str
+    link: str
+
+
+class DashboardWorkstationMini(BaseModel):
+    workstation_id: int
+    club_id: int
+    club_name: str
+    number: int
+    type: str
+    status: str
+    client_name: str | None = None
+
+
+class DashboardResponse(BaseModel):
+    server_time: datetime
+    revenue_today: Decimal
+    revenue_yesterday: Decimal
+    revenue_month: Decimal
+    active_sessions: int
+    workstations_total: int
+    workstations_available: int
+    workstations_free: int
+    workstations_repair: int
+    occupancy_percent: Decimal
+    expenses_month: Decimal
+    expenses_prev_month: Decimal
+    profit_month: Decimal
+    new_clients_7d: int
+    new_clients_30d: int
+    revenue_14d: list[RevenueDayPoint]
+    workstations_now: list[DashboardWorkstationMini]
+    upcoming_tournaments: list[TournamentRead]
+    recent_payments: list[PaymentRead]
+    alerts: list[DashboardAlert]
+
+
+class FinancePeriodBucket(BaseModel):
+    period_key: str
+    period_label: str
+    revenue: Decimal
+    revenue_cash: Decimal
+    revenue_card: Decimal
+    revenue_bonus: Decimal
+    expenses: Decimal
+    profit: Decimal
+    expenses_by_category: dict[str, Decimal]
+
+
+class FinanceReportResponse(BaseModel):
+    date_from: date_type
+    date_to: date_type
+    granularity: str
+    revenue_total: Decimal
+    revenue_cash: Decimal
+    revenue_card: Decimal
+    revenue_bonus: Decimal
+    expenses_total: Decimal
+    profit: Decimal
+    payments_count: int
+    avg_check: Decimal
+    expenses_by_category: dict[str, Decimal]
+    series: list[FinancePeriodBucket]
+
+
+class OccupancyByTypeItem(BaseModel):
+    type: str
+    workstations_count: int
+    sessions_count: int
+    hours: Decimal
+    occupancy_percent: Decimal
+
+
+class PeakHourItem(BaseModel):
+    weekday: int
+    weekday_label: str
+    hour: int
+    hour_label: str
+    occupancy_percent: Decimal
+
+
+class OccupancyReportResponse(BaseModel):
+    date_from: date_type
+    date_to: date_type
+    available_workstations: int
+    total_sessions: int
+    total_hours: Decimal
+    overall_occupancy_percent: Decimal
+    heatmap: list[list[Decimal]]  # 7 (Пн..Нд) x 24 (0..23)
+    by_type: list[OccupancyByTypeItem]
+    peak_hours: list[PeakHourItem]
+
+
+class TariffReportItem(BaseModel):
+    tariff_id: int
+    name: str
+    workstation_type: str
+    price_per_hour: Decimal
+    sessions_count: int
+    hours: Decimal
+    revenue: Decimal
+
+
+class WorkstationReportItem(BaseModel):
+    workstation_id: int
+    club_id: int
+    club_name: str
+    number: int
+    type: str
+    status: str
+    sessions_count: int
+    hours: Decimal
+    revenue: Decimal
+    occupancy_percent: Decimal
+    is_most_loaded: bool = False
+    is_least_loaded: bool = False
+
+
+class TariffsReportResponse(BaseModel):
+    date_from: date_type
+    date_to: date_type
+    tariffs: list[TariffReportItem]
+    workstations: list[WorkstationReportItem]
+
+
+class TopClientItem(BaseModel):
+    client_id: int
+    full_name: str
+    phone: str
+    sessions_count: int
+    total_spent: Decimal
+    bonus_balance: Decimal
+
+
+class NewClientsBucket(BaseModel):
+    period_key: str
+    period_label: str
+    count: int
+
+
+class ClientsReportResponse(BaseModel):
+    date_from: date_type
+    date_to: date_type
+    total_clients: int
+    new_clients_period: int
+    active_clients_period: int
+    returning_clients_count: int
+    returning_share_percent: Decimal
+    top_clients: list[TopClientItem]
+    new_clients_series: list[NewClientsBucket]
+
+
+class TournamentReportRow(BaseModel):
+    tournament_id: int
+    name: str
+    game: str
+    club_name: str
+    date: date_type
+    status: str
+    participants_count: int
+    prize_fund: Decimal
+    winner_name: str | None = None
+
+
+class TournamentsReportResponse(BaseModel):
+    date_from: date_type
+    date_to: date_type
+    tournaments_count: int
+    participants_total: int
+    prize_fund_total: Decimal
+    items: list[TournamentReportRow]
+
+
+

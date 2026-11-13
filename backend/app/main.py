@@ -9,9 +9,11 @@ from .routers import (
     auth,
     clients,
     clubs,
+    dashboard,
     expenses,
     hall,
     payments,
+    reports,
     sessions,
     staff,
     tariffs,
@@ -43,6 +45,8 @@ app.include_router(sessions.router)
 app.include_router(payments.router)
 app.include_router(expenses.router)
 app.include_router(tournaments.router)
+app.include_router(dashboard.router)
+app.include_router(reports.router)
 
 
 @app.get("/health", tags=["service"])
