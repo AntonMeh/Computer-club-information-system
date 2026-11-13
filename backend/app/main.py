@@ -5,11 +5,11 @@ from sqlalchemy.orm import Session
 
 from .config import check_secret_key, settings
 from .database import get_db
-from .routers import auth, clients, clubs
+from .routers import auth, clients, clubs, staff, tariffs, users, workstations
 
 check_secret_key()
 
-app = FastAPI(title="Club system API", version="0.1.0")
+app = FastAPI(title="Club system API", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -20,7 +20,11 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(clubs.router)
+app.include_router(workstations.router)
+app.include_router(tariffs.router)
+app.include_router(staff.router)
 app.include_router(clients.router)
+app.include_router(users.router)
 
 
 @app.get("/health", tags=["service"])

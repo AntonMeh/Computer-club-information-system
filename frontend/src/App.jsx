@@ -2,11 +2,16 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import Layout from "./components/Layout.jsx";
 import { ToastProvider } from "./components/Toast.jsx";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
-import { formatDate, formatMoney, formatPhone } from "./format.js";
+import ClientDetailPage from "./pages/ClientDetailPage.jsx";
+import ClientsPage from "./pages/ClientsPage.jsx";
+import ClubsPage from "./pages/ClubsPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
-import ResourcePage from "./pages/ResourcePage.jsx";
+import StaffPage from "./pages/StaffPage.jsx";
 import { ForbiddenPage, NotFoundPage, SectionPlaceholderPage } from "./pages/StatusPages.jsx";
+import TariffsPage from "./pages/TariffsPage.jsx";
+import UsersPage from "./pages/UsersPage.jsx";
+import WorkstationsPage from "./pages/WorkstationsPage.jsx";
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
@@ -38,66 +43,6 @@ function RequireSection({ section, level = "view", children }) {
     return <ForbiddenPage />;
   }
   return children;
-}
-
-function ClubsPage() {
-  const { reloadClubs } = useAuth();
-  return (
-    <ResourcePage
-      section="clubs"
-      title="Клуби мережі"
-      endpoint="/clubs"
-      idKey="club_id"
-      nameKey="name"
-      addLabel="Додати клуб"
-      emptyText="Клубів ще немає. Додайте перший клуб."
-      onChanged={reloadClubs}
-      columns={[
-        { key: "club_id", label: "№", numeric: true },
-        { key: "name", label: "Назва" },
-        { key: "address", label: "Адреса" },
-        { key: "phone", label: "Телефон", render: (v) => formatPhone(v) },
-        { key: "pc_count", label: "Кількість ПК", numeric: true },
-      ]}
-      fields={[
-        { name: "name", label: "Назва", type: "text", required: true },
-        { name: "address", label: "Адреса", type: "text", required: true },
-        { name: "phone", label: "Телефон", type: "text", required: true, placeholder: "+380…" },
-      ]}
-    />
-  );
-}
-
-function ClientsPage() {
-  return (
-    <ResourcePage
-      section="clients"
-      title="Клієнти"
-      endpoint="/clients"
-      idKey="client_id"
-      nameKey="full_name"
-      addLabel="Додати клієнта"
-      emptyText="Клієнтів ще немає. Додайте першого клієнта."
-      columns={[
-        { key: "client_id", label: "№", numeric: true },
-        { key: "full_name", label: "ПІБ" },
-        { key: "phone", label: "Телефон", render: (v) => formatPhone(v) },
-        { key: "email", label: "Email" },
-        { key: "reg_date", label: "Реєстрація", render: (v) => formatDate(v) },
-        {
-          key: "bonus_balance",
-          label: "Бонуси",
-          numeric: true,
-          render: (v) => formatMoney(v),
-        },
-      ]}
-      fields={[
-        { name: "full_name", label: "ПІБ", type: "text", required: true },
-        { name: "phone", label: "Телефон", type: "text", required: true, placeholder: "+380…" },
-        { name: "email", label: "Email", type: "text" },
-      ]}
-    />
-  );
 }
 
 export default function App() {
@@ -167,11 +112,7 @@ export default function App() {
                 path="/clients/:id"
                 element={
                   <RequireSection section="clients">
-                    <SectionPlaceholderPage
-                      title="Картка клієнта"
-                      section="clients"
-                      description="Детальна картка клієнта: бонуси, історія сеансів, оплат та участі в турнірах."
-                    />
+                    <ClientDetailPage />
                   </RequireSection>
                 }
               />
@@ -180,11 +121,7 @@ export default function App() {
                 path="/tariffs"
                 element={
                   <RequireSection section="tariffs">
-                    <SectionPlaceholderPage
-                      title="Тарифи"
-                      section="tariffs"
-                      description="Тарифи за типами робочих місць: Standard, VIP, PlayStation."
-                    />
+                    <TariffsPage />
                   </RequireSection>
                 }
               />
@@ -193,11 +130,7 @@ export default function App() {
                 path="/workstations"
                 element={
                   <RequireSection section="workstations">
-                    <SectionPlaceholderPage
-                      title="Робочі місця"
-                      section="workstations"
-                      description="Облік ігрових ПК і консолей клубу, статуси та переведення на ремонт."
-                    />
+                    <WorkstationsPage />
                   </RequireSection>
                 }
               />
@@ -271,11 +204,7 @@ export default function App() {
                 path="/staff"
                 element={
                   <RequireSection section="staff">
-                    <SectionPlaceholderPage
-                      title="Співробітники"
-                      section="staff"
-                      description="Список співробітників клубу та організаційна структура."
-                    />
+                    <StaffPage />
                   </RequireSection>
                 }
               />
@@ -293,11 +222,7 @@ export default function App() {
                 path="/users"
                 element={
                   <RequireSection section="users">
-                    <SectionPlaceholderPage
-                      title="Користувачі"
-                      section="users"
-                      description="Облікові записи співробітників, ролі, прив'язка до клубу та скидання паролів."
-                    />
+                    <UsersPage />
                   </RequireSection>
                 }
               />
