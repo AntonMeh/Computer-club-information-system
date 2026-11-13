@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +16,10 @@ class Settings(BaseSettings):
     # Блокування входу після невдалих спроб (сторінка «Вхід»)
     login_max_attempts: int = 5
     login_lock_minutes: int = 5
+
+    # Бізнес-правила сеансів та бонусів (розділ 8 специфікації)
+    bonus_rate: Decimal = Decimal("0.05")  # 5 % від оплати готівкою або карткою
+    cancel_window_minutes: int = 5  # Адмін залу скасовує сеанси до 5 хв
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

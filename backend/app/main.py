@@ -5,7 +5,18 @@ from sqlalchemy.orm import Session
 
 from .config import check_secret_key, settings
 from .database import get_db
-from .routers import auth, clients, clubs, staff, tariffs, users, workstations
+from .routers import (
+    auth,
+    clients,
+    clubs,
+    hall,
+    payments,
+    sessions,
+    staff,
+    tariffs,
+    users,
+    workstations,
+)
 
 check_secret_key()
 
@@ -25,6 +36,9 @@ app.include_router(tariffs.router)
 app.include_router(staff.router)
 app.include_router(clients.router)
 app.include_router(users.router)
+app.include_router(hall.router)
+app.include_router(sessions.router)
+app.include_router(payments.router)
 
 
 @app.get("/health", tags=["service"])

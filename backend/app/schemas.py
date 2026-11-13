@@ -304,3 +304,144 @@ class ResetPasswordResponse(BaseModel):
     user_id: int
     username: str
     temporary_password: str
+
+
+# ---------- Hall & Sessions (Етап 2) ----------
+PAYMENT_METHODS = ("готівка", "картка", "бонуси")
+
+
+class HallActiveSession(BaseModel):
+    session_id: int
+    client_id: int
+    client_name: str
+    client_phone: str
+    client_bonus_balance: Decimal
+    tariff_id: int
+    tariff_name: str
+    price_per_hour: Decimal
+    start_time: datetime
+    elapsed_seconds: int
+    elapsed_minutes: int
+    estimated_amount: Decimal
+
+
+class HallWorkstationItem(BaseModel):
+    workstation_id: int
+    club_id: int
+    club_name: str
+    number: int
+    type: str
+    status: str
+    active_session: HallActiveSession | None = None
+
+
+class HallSummary(BaseModel):
+    total: int
+    free: int
+    busy: int
+    repair: int
+
+
+class HallResponse(BaseModel):
+    server_time: datetime
+    club_id: int | None = None
+    summary: HallSummary
+    items: list[HallWorkstationItem]
+
+
+class SessionCreate(BaseModel):
+    workstation_id: int
+    tariff_id: int
+    client_id: int | None = None
+    new_client_name: str | None = Field(default=None, max_length=100)
+    new_client_phone: str | None = Field(default=None, max_length=20)
+
+
+class SessionFinishRequest(BaseModel):
+    method: str = Field(min_length=1, max_length=20)
+
+    @field_validator("method")
+    @classmethod
+    def _validate_method(cls, v: str) -> str:
+        if v not in PAYMENT_METHODS:
+            raise ValueError(f"Спосіб оплати має бути одним із: {', '.join(PAYMENT_METHODS)}")
+        return v
+
+
+class SessionRead(BaseModel):
+    session_id: int
+    client_id: int
+    client_name: str
+    client_phone: str
+    client_bonus_balance: Decimal
+    workstation_id: int
+    workstation_number: int
+    workstation_type: str
+    club_id: int
+    club_name: str
+    tariff_id: int
+    tariff_name: str
+    price_per_hour: Decimal
+    start_time: datetime
+    end_time: datetime | None = None
+    status: str
+    duration_minutes: int
+    calculated_amount: Decimal
+    payment_id: int | None = None
+    payment_amount: Decimal | None = None
+    payment_method: str | None = None
+    payment_date: datetime | None = None
+    bonus_earned: Decimal = Decimal("0.00")
+    bonus_spent: Decimal = Decimal("0.00")
+
+
+class SessionSummary(BaseModel):
+    count: int
+    minutes: int
+    amount: Decimal
+
+
+class SessionListResponse(BaseModel):
+    items: list[SessionRead]
+    total: int
+    summary: SessionSummary
+
+
+# ---------- Payments (Етап 2) ----------
+class PaymentRead(BaseModel):
+    payment_id: int
+    session_id: int
+    amount: Decimal
+    payment_date: datetime
+    method: str
+    client_id: int
+    client_name: str
+    client_phone: str
+    club_id: int
+    club_name: str
+    club_address: str
+    club_phone: str
+    workstation_id: int
+    workstation_number: int
+    workstation_type: str
+    tariff_id: int
+    tariff_name: str
+    price_per_hour: Decimal
+    start_time: datetime
+    end_time: datetime | None = None
+    duration_minutes: int
+
+
+class PaymentSummary(BaseModel):
+    count: int
+    total: Decimal
+    cash: Decimal
+    card: Decimal
+    bonus: Decimal
+
+
+class PaymentListResponse(BaseModel):
+    items: list[PaymentRead]
+    total: int
+    summary: PaymentSummary
+

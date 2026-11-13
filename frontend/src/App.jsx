@@ -5,8 +5,11 @@ import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import ClientDetailPage from "./pages/ClientDetailPage.jsx";
 import ClientsPage from "./pages/ClientsPage.jsx";
 import ClubsPage from "./pages/ClubsPage.jsx";
+import HallPage from "./pages/HallPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
+import PaymentsPage from "./pages/PaymentsPage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
+import SessionsPage from "./pages/SessionsPage.jsx";
 import StaffPage from "./pages/StaffPage.jsx";
 import { ForbiddenPage, NotFoundPage, SectionPlaceholderPage } from "./pages/StatusPages.jsx";
 import TariffsPage from "./pages/TariffsPage.jsx";
@@ -77,11 +80,7 @@ export default function App() {
                 path="/hall"
                 element={
                   <RequireSection section="hall">
-                    <SectionPlaceholderPage
-                      title="Зал"
-                      section="hall"
-                      description="Керування робочими місцями в реальному часі: швидкий старт і завершення ігрових сеансів."
-                    />
+                    <HallPage />
                   </RequireSection>
                 }
               />
@@ -90,11 +89,7 @@ export default function App() {
                 path="/sessions"
                 element={
                   <RequireSection section="sessions">
-                    <SectionPlaceholderPage
-                      title="Сеанси"
-                      section="sessions"
-                      description="Журнал ігрових сеансів із фільтрами за періодом, статусом, місцем і тарифом."
-                    />
+                    <SessionsPage />
                   </RequireSection>
                 }
               />
@@ -139,11 +134,7 @@ export default function App() {
                 path="/payments"
                 element={
                   <RequireSection section="payments">
-                    <SectionPlaceholderPage
-                      title="Оплати"
-                      section="payments"
-                      description="Реєстр прийнятих оплат (готівка, картка, бонуси), підсумки та квитанції."
-                    />
+                    <PaymentsPage />
                   </RequireSection>
                 }
               />
