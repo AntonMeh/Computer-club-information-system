@@ -445,3 +445,118 @@ class PaymentListResponse(BaseModel):
     total: int
     summary: PaymentSummary
 
+
+# ---------- Expenses (Етап 3) ----------
+EXPENSE_CATEGORIES = ("оренда", "зарплата", "закупівлі", "комунальні", "інше")
+
+
+class ExpenseCreate(BaseModel):
+    club_id: int
+    category: str = Field(min_length=1, max_length=50)
+    amount: Decimal = Field(gt=0, le=Decimal("99999999.99"))
+    expense_date: date_type | None = None
+    description: str | None = Field(default=None, max_length=200)
+
+    @field_validator("category")
+    @classmethod
+    def _validate_cat(cls, v: str) -> str:
+        if v not in EXPENSE_CATEGORIES:
+            raise ValueError(f"Категорія має бути однією з: {', '.join(EXPENSE_CATEGORIES)}")
+        return v
+
+
+class ExpenseUpdate(BaseModel):
+    club_id: int | None = None
+    category: str | None = Field(default=None, min_length=1, max_length=50)
+    amount: Decimal | None = Field(default=None, gt=0, le=Decimal("99999999.99"))
+    expense_date: date_type | None = None
+    description: str | None = Field(default=None, max_length=200)
+
+    @field_validator("category")
+    @classmethod
+    def _validate_cat(cls, v: str | None) -> str | None:
+        if v is not None and v not in EXPENSE_CATEGORIES:
+            raise ValueError(f"Категорія має бути однією з: {', '.join(EXPENSE_CATEGORIES)}")
+        return v
+
+
+class ExpenseRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    expense_id: int
+    club_id: int
+    club_name: str
+    category: str
+    amount: Decimal
+    expense_date: date_type
+    description: str | None = None
+
+
+class ExpenseCategoryStat(BaseModel):
+    category: str
+    amount: Decimal
+    share_percent: Decimal
+
+
+class ExpenseSummary(BaseModel):
+    count: int
+    total: Decimal
+    top_category: str | None = None
+    top_category_amount: Decimal = Decimal("0.00")
+    by_category: list[ExpenseCategoryStat]
+
+
+class ExpenseListResponse(BaseModel):
+    items: list[ExpenseRead]
+    total: int
+    summary: ExpenseSummary
+
+
+# ---------- Tournaments & Participations (Етап 3) ----------
+class TournamentCreate(BaseModel):
+    club_id: int
+    name: str = Field(min_length=1, max_length=100)
+    game: str = Field(min_length=1, max_length=50)
+    date: date_type
+    prize_fund: Decimal = Field(default=Decimal("0.00"), ge=0, le=Decimal("99999999.99"))
+
+
+class TournamentUpdate(BaseModel):
+    club_id: int | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    game: str | None = Field(default=None, min_length=1, max_length=50)
+    date: date_type | None = None
+    prize_fund: Decimal | None = Field(default=None, ge=0, le=Decimal("99999999.99"))
+
+
+class ParticipantRead(BaseModel):
+    participation_id: int
+    tournament_id: int
+    client_id: int
+    client_name: str
+    client_phone: str
+    place: int | None = None
+
+
+class ParticipantCreate(BaseModel):
+    client_id: int
+    place: int | None = Field(default=None, ge=1)
+
+
+class ParticipantUpdate(BaseModel):
+    place: int | None = Field(default=None, ge=1)
+
+
+class TournamentRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    tournament_id: int
+    club_id: int
+    club_name: str
+    name: str
+    game: str
+    date: date_type
+    prize_fund: Decimal
+    status: str  # майбутній / сьогодні / завершений
+    participants_count: int = 0
+    participants: list[ParticipantRead] = []
+
+

@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import ClientDetailPage from "./pages/ClientDetailPage.jsx";
 import ClientsPage from "./pages/ClientsPage.jsx";
 import ClubsPage from "./pages/ClubsPage.jsx";
+import ExpensesPage from "./pages/ExpensesPage.jsx";
 import HallPage from "./pages/HallPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import PaymentsPage from "./pages/PaymentsPage.jsx";
@@ -13,6 +14,8 @@ import SessionsPage from "./pages/SessionsPage.jsx";
 import StaffPage from "./pages/StaffPage.jsx";
 import { ForbiddenPage, NotFoundPage, SectionPlaceholderPage } from "./pages/StatusPages.jsx";
 import TariffsPage from "./pages/TariffsPage.jsx";
+import TournamentDetailPage from "./pages/TournamentDetailPage.jsx";
+import TournamentsPage from "./pages/TournamentsPage.jsx";
 import UsersPage from "./pages/UsersPage.jsx";
 import WorkstationsPage from "./pages/WorkstationsPage.jsx";
 
@@ -143,11 +146,7 @@ export default function App() {
                 path="/expenses"
                 element={
                   <RequireSection section="expenses">
-                    <SectionPlaceholderPage
-                      title="Витрати"
-                      section="expenses"
-                      description="Облік витрат клубу за категоріями: оренда, зарплата, закупівлі, комунальні, інше."
-                    />
+                    <ExpensesPage />
                   </RequireSection>
                 }
               />
@@ -169,11 +168,7 @@ export default function App() {
                 path="/tournaments"
                 element={
                   <RequireSection section="tournaments">
-                    <SectionPlaceholderPage
-                      title="Турніри"
-                      section="tournaments"
-                      description="Календар майбутніх і завершених турнірів, реєстрація учасників та підсумки."
-                    />
+                    <TournamentsPage />
                   </RequireSection>
                 }
               />
@@ -182,11 +177,7 @@ export default function App() {
                 path="/tournaments/:id"
                 element={
                   <RequireSection section="tournaments">
-                    <SectionPlaceholderPage
-                      title="Картка турніру"
-                      section="tournaments"
-                      description="Учасники турніру, результати та призери."
-                    />
+                    <TournamentDetailPage />
                   </RequireSection>
                 }
               />

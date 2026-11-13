@@ -2053,6 +2053,168 @@ th.actions-col {
   padding-top: 4px;
 }
 
+/* ---------- Витрати та Турніри (Етап 3) ---------- */
+.expenses-top-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.expense-breakdown-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.expense-bar {
+  display: flex;
+  height: 16px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--paper);
+  gap: 2px;
+}
+
+.expense-bar-segment {
+  height: 100%;
+  min-width: 8px;
+}
+
+.expense-legend {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.expense-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.expense-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tournaments-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 18px;
+}
+
+.tournament-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-decoration: none;
+  color: var(--ink);
+  transition: border-color 0.15s ease;
+}
+
+.tournament-card:hover {
+  border-color: var(--accent);
+}
+
+.tournament-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tournament-prize {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.tournament-card-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.tournament-meta-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.tournament-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tournament-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.tournament-participants-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.winners-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.winner-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-left-width: 4px;
+}
+
+.winner-place-1 {
+  border-left-color: var(--warning);
+}
+
+.winner-place-2 {
+  border-left-color: var(--info);
+}
+
+.winner-place-3 {
+  border-left-color: var(--success);
+}
+
+.winner-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.winner-icon {
+  color: var(--muted);
+}
+
+.winner-name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.panel-inner-header {
+  padding: 16px 20px 8px;
+}
+
 @media print {
   .sidebar,
   .topbar,
