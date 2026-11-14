@@ -114,11 +114,13 @@ class Payment(Base):
 
     payment_id: Mapped[int] = mapped_column(primary_key=True)
     session_id: Mapped[int] = mapped_column(ForeignKey("session.session_id"), unique=True)
+    shift_id: Mapped[int | None] = mapped_column(ForeignKey("shift.shift_id"))
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     payment_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     method: Mapped[str] = mapped_column(String(20))  # готівка / картка / бонуси
 
     session: Mapped["GameSession"] = relationship(back_populates="payment")
+    shift: Mapped["Shift | None"] = relationship(back_populates="payments")
 
 
 class Staff(Base):
@@ -208,3 +210,93 @@ class AppUser(Base):
 
     club: Mapped["Club | None"] = relationship()
     staff: Mapped["Staff | None"] = relationship()
+
+
+class Shift(Base):
+    """Робоча зміна клубу та знімок показників Z-звіту (розділ 3 та 7.16 специфікації)."""
+
+    __tablename__ = "shift"
+    __table_args__ = (
+        # Не більше однієї відкритої зміни на клуб (правило 8.1 п. 1)
+        Index(
+            "uq_shift_open_club",
+            "club_id",
+            unique=True,
+            postgresql_where=text("status = 'відкрита'"),
+            sqlite_where=text("status = 'відкрита'"),
+        ),
+        UniqueConstraint("club_id", "z_number", name="uq_shift_club_z_number"),
+        CheckConstraint("opening_cash >= 0", name="ck_shift_opening_cash_nonnegative"),
+    )
+
+    shift_id: Mapped[int] = mapped_column(primary_key=True)
+    club_id: Mapped[int] = mapped_column(ForeignKey("club.club_id"))
+    z_number: Mapped[int | None] = mapped_column(default=None)
+    business_date: Mapped[date] = mapped_column(Date, default=date.today)
+    status: Mapped[str] = mapped_column(String(20), default="відкрита")  # відкрита / закрита
+
+    opened_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    opened_by_user_id: Mapped[int] = mapped_column(ForeignKey("app_user.user_id"))
+    opening_cash: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+    opening_difference: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+    open_note: Mapped[str | None] = mapped_column(String(300))
+
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    closed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.user_id"))
+    force_closed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    cash_sales: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+    card_sales: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+    bonus_sales: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+
+    sessions_completed: Mapped[int] = mapped_column(default=0)
+    sessions_cancelled: Mapped[int] = mapped_column(default=0)
+    sessions_carried_over: Mapped[int] = mapped_column(default=0)
+
+    cash_in: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+    cash_out: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+    collection: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+
+    expected_cash: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+    actual_cash: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+    cash_difference: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+    cash_left: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+
+    card_terminal_total: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    card_difference: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    close_note: Mapped[str | None] = mapped_column(String(300))
+
+    review_status: Mapped[str] = mapped_column(String(20), default="очікує")  # очікує / підтверджена
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.user_id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    review_note: Mapped[str | None] = mapped_column(String(300))
+
+    club: Mapped["Club"] = relationship()
+    opened_by: Mapped["AppUser"] = relationship(foreign_keys=[opened_by_user_id])
+    closed_by: Mapped["AppUser | None"] = relationship(foreign_keys=[closed_by_user_id])
+    reviewed_by: Mapped["AppUser | None"] = relationship(foreign_keys=[reviewed_by_user_id])
+    payments: Mapped[list["Payment"]] = relationship(back_populates="shift")
+    operations: Mapped[list["CashOperation"]] = relationship(back_populates="shift")
+
+
+class CashOperation(Base):
+    """Службова операція з готівкою: внесення, вилучення, інкасація (розділ 3 та 7.16)."""
+
+    __tablename__ = "cash_operation"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_cash_operation_amount_positive"),
+    )
+
+    operation_id: Mapped[int] = mapped_column(primary_key=True)
+    shift_id: Mapped[int] = mapped_column(ForeignKey("shift.shift_id"))
+    club_id: Mapped[int] = mapped_column(ForeignKey("club.club_id"))
+    type: Mapped[str] = mapped_column(String(20))  # внесення / вилучення / інкасація
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    category: Mapped[str | None] = mapped_column(String(30))  # господарські витрати / закупівля / виплата / інше
+    comment: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("app_user.user_id"))
+
+    shift: Mapped["Shift"] = relationship(back_populates="operations")
+    club: Mapped["Club"] = relationship()
+    created_by: Mapped["AppUser"] = relationship()

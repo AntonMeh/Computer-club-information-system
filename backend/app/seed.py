@@ -196,6 +196,124 @@ def seed(db: Session, now: datetime | None = None) -> dict[str, int]:
 
     seed_users(db)
 
+    hall_admin_user = db.scalar(select(models.AppUser).where(models.AppUser.username == "hall_admin"))
+    director_user = db.scalar(select(models.AppUser).where(models.AppUser.username == "director"))
+    accountant_user = db.scalar(select(models.AppUser).where(models.AppUser.username == "accountant"))
+    admin_uid = hall_admin_user.user_id if hall_admin_user else 1
+    dir_uid = director_user.user_id if director_user else 1
+    acc_uid = accountant_user.user_id if accountant_user else 1
+
+    # Створюємо закриту зміну Z-0001 за вчора та поточну відкриту зміну на сьогодні у клубі № 0
+    closed_shift_0 = models.Shift(
+        club_id=clubs[0].club_id,
+        z_number=1,
+        business_date=today - timedelta(days=1),
+        status="закрита",
+        opened_at=datetime.combine(today - timedelta(days=1), time(8, 0)),
+        opened_by_user_id=admin_uid,
+        opening_cash=_money("1000.00"),
+        opening_difference=_money("0.00"),
+        closed_at=datetime.combine(today - timedelta(days=1), time(22, 0)),
+        closed_by_user_id=admin_uid,
+        force_closed=False,
+        cash_sales=_money("590.00"),
+        card_sales=_money("420.00"),
+        bonus_sales=_money("0.00"),
+        sessions_completed=5,
+        sessions_cancelled=0,
+        sessions_carried_over=0,
+        cash_in=_money("200.00"),
+        cash_out=_money("150.00"),
+        collection=_money("440.00"),
+        expected_cash=_money("1640.00"),
+        actual_cash=_money("1640.00"),
+        cash_difference=_money("0.00"),
+        cash_left=_money("1200.00"),
+        card_terminal_total=_money("420.00"),
+        card_difference=_money("0.00"),
+        review_status="підтверджена",
+        reviewed_by_user_id=acc_uid,
+        reviewed_at=datetime.combine(today, time(9, 0)),
+        review_note="Перевірено за Z-звітом та випискою термінала",
+    )
+    closed_shift_1 = models.Shift(
+        club_id=clubs[1].club_id,
+        z_number=1,
+        business_date=today - timedelta(days=1),
+        status="закрита",
+        opened_at=datetime.combine(today - timedelta(days=1), time(9, 0)),
+        opened_by_user_id=dir_uid,
+        opening_cash=_money("500.00"),
+        opening_difference=_money("0.00"),
+        closed_at=datetime.combine(today - timedelta(days=1), time(21, 0)),
+        closed_by_user_id=dir_uid,
+        force_closed=False,
+        cash_sales=_money("90.00"),
+        card_sales=_money("150.00"),
+        bonus_sales=_money("240.00"),
+        sessions_completed=4,
+        sessions_cancelled=0,
+        sessions_carried_over=0,
+        cash_in=_money("0.00"),
+        cash_out=_money("0.00"),
+        collection=_money("0.00"),
+        expected_cash=_money("590.00"),
+        actual_cash=_money("590.00"),
+        cash_difference=_money("0.00"),
+        cash_left=_money("590.00"),
+        review_status="очікує",
+    )
+    open_shift_0 = models.Shift(
+        club_id=clubs[0].club_id,
+        z_number=None,
+        business_date=today,
+        status="відкрита",
+        opened_at=now - timedelta(hours=3),
+        opened_by_user_id=admin_uid,
+        opening_cash=_money("1200.00"),
+        opening_difference=_money("0.00"),
+        expected_cash=_money("1200.00"),
+        actual_cash=_money("1200.00"),
+        cash_left=_money("1200.00"),
+        review_status="очікує",
+    )
+    db.add_all([closed_shift_0, closed_shift_1, open_shift_0])
+    db.flush()
+
+    db.add_all([
+        models.CashOperation(
+            shift_id=closed_shift_0.shift_id,
+            club_id=clubs[0].club_id,
+            type="внесення",
+            amount=_money("200.00"),
+            category=None,
+            comment="Розмінна монета на початок дня",
+            created_at=datetime.combine(today - timedelta(days=1), time(8, 15)),
+            created_by_user_id=admin_uid,
+        ),
+        models.CashOperation(
+            shift_id=closed_shift_0.shift_id,
+            club_id=clubs[0].club_id,
+            type="вилучення",
+            amount=_money("150.00"),
+            category="господарські витрати",
+            comment="Вода для кулера та серветки",
+            created_at=datetime.combine(today - timedelta(days=1), time(14, 30)),
+            created_by_user_id=admin_uid,
+        ),
+        models.CashOperation(
+            shift_id=closed_shift_0.shift_id,
+            club_id=clubs[0].club_id,
+            type="інкасація",
+            amount=_money("440.00"),
+            category=None,
+            comment="Інкасація при закритті зміни",
+            created_at=datetime.combine(today - timedelta(days=1), time(22, 0)),
+            created_by_user_id=admin_uid,
+        ),
+    ])
+    db.flush()
+
     # Завершені сеанси та оплати
     for client_idx, club_idx, number, tariff_key, days_ago, hour, minutes, method in COMPLETED_SESSIONS:
         tariff = tariffs[tariff_key]
@@ -211,7 +329,14 @@ def seed(db: Session, now: datetime | None = None) -> dict[str, int]:
         db.add(session)
         db.flush()
         amount = _money(Decimal(minutes) / Decimal(60) * tariff.price_per_hour)
-        db.add(models.Payment(session_id=session.session_id, amount=amount, payment_date=end, method=method))
+        linked_shift_id = closed_shift_0.shift_id if club_idx == 0 else closed_shift_1.shift_id
+        db.add(models.Payment(
+            session_id=session.session_id,
+            shift_id=linked_shift_id,
+            amount=amount,
+            payment_date=end,
+            method=method,
+        ))
 
     # Один активний сеанс: місце зайняте, оплати ще немає
     active_ws = workstations[(0, 3)]

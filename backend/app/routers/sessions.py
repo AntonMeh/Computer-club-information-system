@@ -210,6 +210,19 @@ def start_session(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Робоче місце не знайдено")
     ensure_club_access(user, ws.club_id)
 
+    # Правило 8.1 п. 2: без відкритої зміни не можна починати сеанси
+    open_shift = db.scalar(
+        select(models.Shift).where(
+            models.Shift.club_id == ws.club_id,
+            models.Shift.status == "відкрита",
+        )
+    )
+    if open_shift is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Зміну не відкрито. Відкрийте зміну, щоб почати сеанс",
+        )
+
     # Правило 4: місце на ремонті не можна використати для нового сеансу
     if ws.status == "на ремонті":
         raise HTTPException(
@@ -316,6 +329,19 @@ def finish_session(
             "Сеанс уже завершено або скасовано",
         )
 
+    # Правило 8.1 п. 2 та п. 3: оплата прив'язується до відкритої зміни клубу в момент завершення
+    open_shift = db.scalar(
+        select(models.Shift).where(
+            models.Shift.club_id == s.workstation.club_id,
+            models.Shift.status == "відкрита",
+        )
+    )
+    if open_shift is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Зміну не відкрито. Відкрийте зміну, щоб завершити сеанс і прийняти оплату",
+        )
+
     now = datetime.now()
     # На випадок, якщо в тесті start_time випадково опиниться після now на мілісекунди
     if now < s.start_time:
@@ -350,6 +376,7 @@ def finish_session(
 
     payment = models.Payment(
         session_id=s.session_id,
+        shift_id=open_shift.shift_id,
         amount=amount,
         payment_date=now,
         method=data.method,

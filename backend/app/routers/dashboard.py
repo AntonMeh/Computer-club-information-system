@@ -6,10 +6,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
+from ..config import settings
 from ..database import get_db
 from ..deps import require, scoped_club_id
 from ..permissions import VIEW
 from .payments import _to_payment_read
+from .shifts import _to_shift_read, get_open_shift_for_club
 from .tournaments import _to_tournament_read
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -258,6 +260,96 @@ def get_dashboard(
             )
         )
 
+    # Поточна зміна, каса за вчора та попередження по змінах/Z-звітах (розділи 7.2 і 8.1 п. 13)
+    target_shift_club_id = effective_club_id
+    if target_shift_club_id is None:
+        first_club = db.scalar(select(models.Club).order_by(models.Club.club_id.asc()))
+        target_shift_club_id = first_club.club_id if first_club else None
+
+    current_shift_mini = schemas.DashboardShiftMini(is_open=False)
+    if target_shift_club_id is not None:
+        c_obj = db.get(models.Club, target_shift_club_id)
+        open_sh = get_open_shift_for_club(db, target_shift_club_id)
+        if open_sh is not None:
+            sh_read = _to_shift_read(db, open_sh, include_details=False)
+            current_shift_mini = schemas.DashboardShiftMini(
+                shift_id=sh_read.shift_id,
+                club_id=sh_read.club_id,
+                club_name=sh_read.club_name,
+                is_open=True,
+                z_label=sh_read.z_label,
+                opened_at=sh_read.opened_at,
+                opened_by_name=sh_read.opened_by_name,
+                revenue_total=sh_read.revenue_total,
+                expected_cash=sh_read.expected_cash,
+            )
+        elif c_obj is not None:
+            current_shift_mini = schemas.DashboardShiftMini(
+                club_id=c_obj.club_id,
+                club_name=c_obj.name,
+                is_open=False,
+            )
+
+    shifts_stmt = select(models.Shift).order_by(models.Shift.shift_id.desc())
+    if effective_club_id is not None:
+        shifts_stmt = shifts_stmt.where(models.Shift.club_id == effective_club_id)
+    all_shifts = db.scalars(shifts_stmt).all()
+
+    unreviewed_count = sum(
+        1 for sh in all_shifts if sh.status == "закрита" and sh.review_status == "очікує"
+    )
+
+    yest_shifts = [
+        sh for sh in all_shifts if sh.status == "закрита" and sh.business_date == yesterday
+    ]
+    yest_cash_sales = sum((Decimal(sh.cash_sales) for sh in yest_shifts), Decimal("0.00"))
+    yest_card_sales = sum((Decimal(sh.card_sales) for sh in yest_shifts), Decimal("0.00"))
+    yest_bonus_sales = sum((Decimal(sh.bonus_sales) for sh in yest_shifts), Decimal("0.00"))
+    yest_diff = sum((Decimal(sh.cash_difference) for sh in yest_shifts), Decimal("0.00"))
+
+    cash_yesterday = schemas.DashboardCashYesterday(
+        revenue_total=(yest_cash_sales + yest_card_sales + yest_bonus_sales).quantize(
+            Decimal("0.01")
+        ),
+        cash_sales=yest_cash_sales.quantize(Decimal("0.01")),
+        cash_difference=yest_diff.quantize(Decimal("0.01")),
+        shifts_count=len(yest_shifts),
+    )
+
+    for sh in all_shifts:
+        if sh.status == "відкрита":
+            hrs_open = (now - sh.opened_at).total_seconds() / 3600.0
+            if hrs_open > 14:
+                alerts.append(
+                    schemas.DashboardAlert(
+                        key=f"shift_long_{sh.shift_id}",
+                        text=f"Зміна у клубі «{sh.club.name if sh.club else ''}» відкрита понад {int(hrs_open)} год — перевірте, чи не забули її закрити",
+                        link="/shift",
+                    )
+                )
+        elif sh.status == "закрита":
+            z_lbl = f"Z-{sh.z_number:04d}" if sh.z_number is not None else f"№ {sh.shift_id}"
+            if (
+                sh.review_status == "очікує"
+                and sh.closed_at is not None
+                and (now - sh.closed_at).total_seconds() > 48 * 3600
+            ):
+                alerts.append(
+                    schemas.DashboardAlert(
+                        key=f"z_unreviewed_{sh.shift_id}",
+                        text=f"Z-звіт {z_lbl} очікує перевірки бухгалтером понад 2 доби",
+                        link=f"/cash/z/{sh.shift_id}",
+                    )
+                )
+            if abs(Decimal(sh.cash_difference)) > Decimal(settings.cash_diff_alert):
+                alerts.append(
+                    schemas.DashboardAlert(
+                        key=f"cash_diff_{sh.shift_id}",
+                        text=f"У Z-звіті {z_lbl} зафіксовано розбіжність каси {Decimal(sh.cash_difference):.2f} ₴ (поріг {settings.cash_diff_alert} ₴)",
+                        link=f"/cash/z/{sh.shift_id}",
+                    )
+                )
+
     return schemas.DashboardResponse(
         server_time=now,
         revenue_today=rev_today,
@@ -279,5 +371,8 @@ def get_dashboard(
         upcoming_tournaments=upcoming_tournaments,
         recent_payments=recent_payments,
         alerts=alerts,
+        current_shift=current_shift_mini,
+        cash_yesterday=cash_yesterday,
+        unreviewed_z_reports_count=unreviewed_count,
     )
 

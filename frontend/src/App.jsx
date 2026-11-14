@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import Layout from "./components/Layout.jsx";
 import { ToastProvider } from "./components/Toast.jsx";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
+import CashPage from "./pages/CashPage.jsx";
 import ClientDetailPage from "./pages/ClientDetailPage.jsx";
 import ClientsPage from "./pages/ClientsPage.jsx";
 import ClubsPage from "./pages/ClubsPage.jsx";
@@ -13,6 +14,7 @@ import PaymentsPage from "./pages/PaymentsPage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
 import ReportsPage from "./pages/ReportsPage.jsx";
 import SessionsPage from "./pages/SessionsPage.jsx";
+import ShiftPage from "./pages/ShiftPage.jsx";
 import StaffPage from "./pages/StaffPage.jsx";
 import { ForbiddenPage, NotFoundPage } from "./pages/StatusPages.jsx";
 import TariffsPage from "./pages/TariffsPage.jsx";
@@ -20,6 +22,7 @@ import TournamentDetailPage from "./pages/TournamentDetailPage.jsx";
 import TournamentsPage from "./pages/TournamentsPage.jsx";
 import UsersPage from "./pages/UsersPage.jsx";
 import WorkstationsPage from "./pages/WorkstationsPage.jsx";
+import ZReportPage from "./pages/ZReportPage.jsx";
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth();
@@ -87,6 +90,15 @@ export default function App() {
               />
 
               <Route
+                path="/shift"
+                element={
+                  <RequireSection section="shift">
+                    <ShiftPage />
+                  </RequireSection>
+                }
+              />
+
+              <Route
                 path="/sessions"
                 element={
                   <RequireSection section="sessions">
@@ -145,6 +157,24 @@ export default function App() {
                 element={
                   <RequireSection section="expenses">
                     <ExpensesPage />
+                  </RequireSection>
+                }
+              />
+
+              <Route
+                path="/cash"
+                element={
+                  <RequireSection section="cash">
+                    <CashPage />
+                  </RequireSection>
+                }
+              />
+
+              <Route
+                path="/cash/z/:id"
+                element={
+                  <RequireSection section="cash">
+                    <ZReportPage />
                   </RequireSection>
                 }
               />

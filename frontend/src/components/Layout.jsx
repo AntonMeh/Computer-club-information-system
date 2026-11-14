@@ -6,6 +6,8 @@ import {
   ChevronDown,
   Clock,
   CreditCard,
+  KeyRound,
+  Landmark,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -22,7 +24,7 @@ import {
 } from "lucide-react";
 import { api } from "../api.js";
 import { useAuth } from "../context/AuthContext.jsx";
-import { formatDateTime } from "../format.js";
+import { formatDateTime, formatTime } from "../format.js";
 
 export const NAV_GROUPS = [
   {
@@ -30,6 +32,7 @@ export const NAV_GROUPS = [
     items: [
       { to: "/", section: "dashboard", label: "Огляд", icon: LayoutDashboard, end: true },
       { to: "/hall", section: "hall", label: "Зал", icon: Monitor },
+      { to: "/shift", section: "shift", label: "Зміна", icon: KeyRound },
       { to: "/sessions", section: "sessions", label: "Сеанси", icon: Clock },
     ],
   },
@@ -46,6 +49,7 @@ export const NAV_GROUPS = [
     items: [
       { to: "/payments", section: "payments", label: "Оплати", icon: CreditCard },
       { to: "/expenses", section: "expenses", label: "Витрати", icon: Receipt },
+      { to: "/cash", section: "cash", label: "Каса", icon: Landmark },
       { to: "/reports", section: "reports", label: "Звіти", icon: BarChart3 },
     ],
   },
@@ -66,12 +70,14 @@ export const NAV_GROUPS = [
 const PAGE_TITLES = {
   "/": "Огляд",
   "/hall": "Зал",
+  "/shift": "Зміна",
   "/sessions": "Сеанси",
   "/clients": "Клієнти",
   "/tariffs": "Тарифи",
   "/workstations": "Робочі місця",
   "/payments": "Оплати",
   "/expenses": "Витрати",
+  "/cash": "Каса і Z-звіти",
   "/reports": "Звіти",
   "/tournaments": "Турніри",
   "/clubs": "Клуби",
@@ -88,6 +94,9 @@ function resolveTitle(pathname) {
   if (pathname.startsWith("/tournaments/")) {
     return { title: "Картка турніру", parent: { to: "/tournaments", label: "Турніри" } };
   }
+  if (pathname.startsWith("/cash/z/")) {
+    return { title: "Z-звіт зміни", parent: { to: "/cash", label: "Каса і Z-звіти" } };
+  }
   return { title: "Клубна система", parent: null };
 }
 
@@ -100,7 +109,39 @@ export default function Layout() {
   const [now, setNow] = useState(() => new Date());
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [shiftInfo, setShiftInfo] = useState(null);
   const menuRef = useRef(null);
+
+  const effectiveIndicatorClubId =
+    user?.club_id ?? selectedClubId ?? clubs[0]?.club_id ?? null;
+
+  useEffect(() => {
+    if (!user || user.must_change_password || !can("shift", "view")) {
+      setShiftInfo(null);
+      return;
+    }
+    let active = true;
+    const loadShift = () => {
+      const q = effectiveIndicatorClubId ? `?club_id=${effectiveIndicatorClubId}` : "";
+      api
+        .get(`/shifts/current${q}`)
+        .then((res) => {
+          if (active) setShiftInfo(res);
+        })
+        .catch(() => {
+          if (active) setShiftInfo(null);
+        });
+    };
+    loadShift();
+    const timer = setInterval(loadShift, 30000);
+    const onShiftUpdated = () => loadShift();
+    window.addEventListener("shift-updated", onShiftUpdated);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      window.removeEventListener("shift-updated", onShiftUpdated);
+    };
+  }, [user, can, effectiveIndicatorClubId, location.pathname]);
 
   useEffect(() => {
     let active = true;
@@ -257,6 +298,24 @@ export default function Layout() {
                 </select>
               )}
             </div>
+
+            {can("shift", "view") && shiftInfo && (
+              <Link
+                to="/shift"
+                className={`shift-indicator-chip ${shiftInfo.current_shift ? "open" : "closed"}`}
+                title="Перейти до керування зміною"
+              >
+                <span className="shift-indicator-dot" aria-hidden="true" />
+                {shiftInfo.current_shift ? (
+                  <span>
+                    Зміна відкрита · з {formatTime(shiftInfo.current_shift.opened_at)} ·{" "}
+                    {shiftInfo.current_shift.opened_by_name}
+                  </span>
+                ) : (
+                  <span>Зміну не відкрито</span>
+                )}
+              </Link>
+            )}
 
             <time className="topbar-clock tabular-nums" dateTime={now.toISOString()}>
               {formatDateTime(now)}

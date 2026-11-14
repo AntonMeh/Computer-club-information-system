@@ -328,6 +328,91 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {/* Картки «Поточна зміна» та «Каса за вчора / Z-звіти» */}
+      {(can("shift") || can("cash")) && (
+        <div className="dashboard-shift-cash-grid">
+          {can("shift") && data.current_shift && (
+            <div className="panel dashboard-shift-card">
+              <div className="dashboard-panel-header" style={{ marginBottom: 8 }}>
+                <div>
+                  <span className="kpi-label">
+                    Поточна зміна · {data.current_shift.club_name}
+                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                    <Badge variant={data.current_shift.shift_open ? "success" : "neutral"}>
+                      {data.current_shift.shift_open ? "Відкрита" : "Зміну не відкрито"}
+                    </Badge>
+                    {data.current_shift.shift_open && (
+                      <span className="subtle-meta">
+                        з{" "}
+                        {new Date(data.current_shift.opened_at).toLocaleTimeString("uk-UA", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}{" "}
+                        · {data.current_shift.opened_by_name}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <Link to="/shift" className="btn btn-secondary btn-sm">
+                  {data.current_shift.shift_open ? "До зміни →" : "Відкрити зміну"}
+                </Link>
+              </div>
+              {data.current_shift.shift_open && (
+                <div className="dashboard-shift-metrics">
+                  <div>
+                    <span className="subtle-meta">Виручка за зміну:</span>{" "}
+                    <strong className="num">{formatMoney(data.current_shift.revenue_total)}</strong>
+                  </div>
+                  <div>
+                    <span className="subtle-meta">Очікується в касі:</span>{" "}
+                    <strong className="num accent-text">
+                      {formatMoney(data.current_shift.expected_cash)}
+                    </strong>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {isFinanceRole && data.cash_yesterday && (
+            <div className="panel dashboard-shift-card">
+              <div className="dashboard-panel-header" style={{ marginBottom: 8 }}>
+                <div>
+                  <span className="kpi-label">Каса за вчора та Z-звіти</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                    {data.unreviewed_z_reports_count > 0 ? (
+                      <Badge variant="warning">
+                        Z-звіти без перевірки: {data.unreviewed_z_reports_count}
+                      </Badge>
+                    ) : (
+                      <Badge variant="success">Усі Z-звіти перевірено</Badge>
+                    )}
+                  </div>
+                </div>
+                <Link to="/cash" className="btn btn-secondary btn-sm">
+                  До каси →
+                </Link>
+              </div>
+              <div className="dashboard-shift-metrics">
+                <div>
+                  <span className="subtle-meta">Готівка вчора:</span>{" "}
+                  <strong className="num">{formatMoney(data.cash_yesterday.revenue_cash)}</strong>
+                </div>
+                <div>
+                  <span className="subtle-meta">Картка вчора:</span>{" "}
+                  <strong className="num">{formatMoney(data.cash_yesterday.revenue_card)}</strong>
+                </div>
+                <div>
+                  <span className="subtle-meta">Інкасація:</span>{" "}
+                  <strong className="num">{formatMoney(data.cash_yesterday.safe_drop_total)}</strong>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Середній ряд (12 колонок: 8 зліва + 4 справа) */}
       <div className="dashboard-mid-grid">
         <div className="panel dashboard-chart-panel">

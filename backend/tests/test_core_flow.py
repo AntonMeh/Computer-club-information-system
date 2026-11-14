@@ -48,6 +48,15 @@ def core_env(db):
         bonus_balance=Decimal("0.00"),
     )
     db.add_all([director, hall_admin, ws_std, ws_vip, ws_repair, tariff_std, tariff_vip, customer])
+    db.flush()
+
+    open_shift = models.Shift(
+        club_id=club.club_id,
+        status="відкрита",
+        opened_by_user_id=hall_admin.user_id,
+        opening_cash=Decimal("1000.00"),
+    )
+    db.add(open_shift)
     db.commit()
 
     return {

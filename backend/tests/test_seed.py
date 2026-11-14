@@ -19,7 +19,7 @@ def db():
 def test_seed_creates_all_tables(db):
     counts = seed(db)
     db.commit()
-    for table in ("club", "workstation", "client", "tariff", "session", "payment", "staff", "tournament", "participation", "expense", "app_user"):
+    for table in ("club", "workstation", "client", "tariff", "session", "payment", "staff", "tournament", "participation", "expense", "app_user", "shift", "cash_operation"):
         assert counts[table] > 0, f"таблиця {table} порожня"
 
 

@@ -15,6 +15,7 @@ from .routers import (
     payments,
     reports,
     sessions,
+    shifts,
     staff,
     tariffs,
     tournaments,
@@ -47,6 +48,7 @@ app.include_router(expenses.router)
 app.include_router(tournaments.router)
 app.include_router(dashboard.router)
 app.include_router(reports.router)
+app.include_router(shifts.router)
 
 
 @app.get("/health", tags=["service"])

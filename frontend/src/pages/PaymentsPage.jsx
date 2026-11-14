@@ -302,6 +302,7 @@ export default function PaymentsPage() {
                 <tr>
                   <th>№</th>
                   <th>Дата й час</th>
+                  <th>Зміна</th>
                   <th>Клієнт</th>
                   <th>Сеанс і місце</th>
                   <th>Спосіб</th>
@@ -318,6 +319,15 @@ export default function PaymentsPage() {
                   >
                     <td className="tabular-nums font-medium">№ {p.payment_id}</td>
                     <td className="tabular-nums">{formatDateTime(p.payment_date)}</td>
+                    <td className="tabular-nums" onClick={(e) => e.stopPropagation()}>
+                      {p.shift_id ? (
+                        <Link to={`/cash/z/${p.shift_id}`} className="table-link font-medium">
+                          {p.shift_label || `#${p.shift_id}`}
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td onClick={(e) => e.stopPropagation()}>
                       <Link to={`/clients/${p.client_id}`} className="table-link font-medium">
                         {p.client_name}
@@ -416,6 +426,21 @@ export default function PaymentsPage() {
               <div className="desc-row">
                 <dt>Клуб</dt>
                 <dd>{detailPayment.club_name}</dd>
+              </div>
+              <div className="desc-row">
+                <dt>Зміна</dt>
+                <dd className="tabular-nums">
+                  {detailPayment.shift_id ? (
+                    <Link
+                      to={`/cash/z/${detailPayment.shift_id}`}
+                      className="table-link font-medium"
+                    >
+                      {detailPayment.shift_label || `#${detailPayment.shift_id}`}
+                    </Link>
+                  ) : (
+                    "—"
+                  )}
+                </dd>
               </div>
               <div className="desc-row">
                 <dt>Клієнт</dt>

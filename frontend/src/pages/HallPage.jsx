@@ -182,6 +182,16 @@ export default function HallPage() {
     return () => clearInterval(tickId);
   }, [serverOffsetMs]);
 
+  // Закриття модального вікна характеристик за клавішею Escape
+  useEffect(() => {
+    if (!specWs) return;
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") setSpecWs(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [specWs]);
+
   const openStartForWs = (ws = null) => {
     setPresetWs(ws);
     setStartDrawerOpen(true);
@@ -231,6 +241,7 @@ export default function HallPage() {
 
   const items = hallData?.items || [];
   const summary = hallData?.summary || { total: 0, free: 0, busy: 0, repair: 0 };
+  const isShiftOpen = hallData ? Boolean(hallData.shift_open) : true;
   const freeWorkstations = items.filter((w) => w.status === "вільне");
   const activeSpecs = specWs ? WORKSTATION_SPECS[specWs.type] || WORKSTATION_SPECS.Standard : null;
 
@@ -277,7 +288,8 @@ export default function HallPage() {
             <button
               type="button"
               className="btn btn-primary"
-              disabled={freeWorkstations.length === 0}
+              disabled={freeWorkstations.length === 0 || !isShiftOpen}
+              title={!isShiftOpen ? "Спочатку відкрийте зміну" : undefined}
               onClick={() => openStartForWs(null)}
             >
               <Plus size={18} aria-hidden="true" />
@@ -305,6 +317,17 @@ export default function HallPage() {
               </button>
             );
           })}
+        </div>
+      )}
+
+      {hallData && !isShiftOpen && (
+        <div className="alert alert-warning" role="alert">
+          <span>
+            <strong>Зміну не відкрито.</strong> Відкрийте зміну, щоб починати сеанси та приймати оплату.
+          </span>
+          <Link to="/shift" className="btn btn-primary btn-sm">
+            Відкрити зміну →
+          </Link>
         </div>
       )}
 
@@ -474,6 +497,8 @@ export default function HallPage() {
                         <button
                           type="button"
                           className="btn btn-primary btn-sm hall-main-btn"
+                          disabled={!isShiftOpen}
+                          title={!isShiftOpen ? "Спочатку відкрийте зміну" : undefined}
                           onClick={() => openStartForWs(ws)}
                         >
                           <Play size={14} aria-hidden="true" />
@@ -516,6 +541,8 @@ export default function HallPage() {
                         <button
                           type="button"
                           className="btn btn-primary btn-sm hall-main-btn"
+                          disabled={!isShiftOpen}
+                          title={!isShiftOpen ? "Спочатку відкрийте зміну" : undefined}
                           onClick={() => openFinishForWs(ws)}
                         >
                           <Square size={14} aria-hidden="true" />
@@ -642,6 +669,8 @@ export default function HallPage() {
                           <button
                             type="button"
                             className="btn btn-primary btn-sm"
+                            disabled={!isShiftOpen}
+                            title={!isShiftOpen ? "Спочатку відкрийте зміну" : undefined}
                             onClick={() => openStartForWs(ws)}
                           >
                             <Play size={14} />
@@ -653,6 +682,8 @@ export default function HallPage() {
                             <button
                               type="button"
                               className="btn btn-primary btn-sm"
+                              disabled={!isShiftOpen}
+                              title={!isShiftOpen ? "Спочатку відкрийте зміну" : undefined}
                               onClick={() => openFinishForWs(ws)}
                             >
                               <Square size={14} />

@@ -345,6 +345,10 @@ class HallSummary(BaseModel):
 class HallResponse(BaseModel):
     server_time: datetime
     club_id: int | None = None
+    shift_open: bool = False
+    current_shift_id: int | None = None
+    current_shift_opened_at: datetime | None = None
+    current_shift_opened_by: str | None = None
     summary: HallSummary
     items: list[HallWorkstationItem]
 
@@ -411,6 +415,9 @@ class SessionListResponse(BaseModel):
 class PaymentRead(BaseModel):
     payment_id: int
     session_id: int
+    shift_id: int | None = None
+    shift_z_number: int | None = None
+    shift_label: str | None = None
     amount: Decimal
     payment_date: datetime
     method: str
@@ -583,6 +590,25 @@ class DashboardWorkstationMini(BaseModel):
     client_name: str | None = None
 
 
+class DashboardShiftMini(BaseModel):
+    shift_id: int | None = None
+    club_id: int | None = None
+    club_name: str | None = None
+    is_open: bool = False
+    z_label: str | None = None
+    opened_at: datetime | None = None
+    opened_by_name: str | None = None
+    revenue_total: Decimal = Decimal("0.00")
+    expected_cash: Decimal = Decimal("0.00")
+
+
+class DashboardCashYesterday(BaseModel):
+    revenue_total: Decimal = Decimal("0.00")
+    cash_sales: Decimal = Decimal("0.00")
+    cash_difference: Decimal = Decimal("0.00")
+    shifts_count: int = 0
+
+
 class DashboardResponse(BaseModel):
     server_time: datetime
     revenue_today: Decimal
@@ -604,6 +630,9 @@ class DashboardResponse(BaseModel):
     upcoming_tournaments: list[TournamentRead]
     recent_payments: list[PaymentRead]
     alerts: list[DashboardAlert]
+    current_shift: DashboardShiftMini | None = None
+    cash_yesterday: DashboardCashYesterday | None = None
+    unreviewed_z_reports_count: int = 0
 
 
 class FinancePeriodBucket(BaseModel):
@@ -740,6 +769,190 @@ class TournamentsReportResponse(BaseModel):
     participants_total: int
     prize_fund_total: Decimal
     items: list[TournamentReportRow]
+
+
+# ---------- Зміни та Каса (Розділи 7.16, 7.17, 8.1) ----------
+CASH_OPERATION_TYPES = ("внесення", "вилучення", "інкасація")
+CASH_WITHDRAWAL_CATEGORIES = ("господарські витрати", "закупівля", "виплата", "інше")
+
+
+class ShiftOpenRequest(BaseModel):
+    club_id: int | None = None
+    opening_cash: Decimal = Field(ge=0, le=Decimal("99999999.99"))
+    comment: str | None = Field(default=None, max_length=300)
+
+
+class ShiftCloseRequest(BaseModel):
+    actual_cash: Decimal = Field(ge=0, le=Decimal("99999999.99"))
+    collection: Decimal = Field(default=Decimal("0.00"), ge=0, le=Decimal("99999999.99"))
+    card_terminal_total: Decimal | None = Field(default=None, ge=0, le=Decimal("99999999.99"))
+    comment: str | None = Field(default=None, max_length=300)
+
+
+class ShiftForceCloseRequest(BaseModel):
+    comment: str = Field(min_length=1, max_length=300)
+
+    @field_validator("comment")
+    @classmethod
+    def _validate_comment(cls, v: str) -> str:
+        clean = v.strip()
+        if not clean:
+            raise ValueError("Коментар обов'язковий для примусового закриття зміни")
+        return clean
+
+
+class ShiftReviewRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=300)
+
+
+class CashOperationCreate(BaseModel):
+    club_id: int | None = None
+    type: str = Field(min_length=1, max_length=20)
+    amount: Decimal = Field(gt=0, le=Decimal("99999999.99"))
+    category: str | None = Field(default=None, max_length=30)
+    comment: str | None = Field(default=None, max_length=200)
+
+    @field_validator("type")
+    @classmethod
+    def _validate_type(cls, v: str) -> str:
+        if v not in CASH_OPERATION_TYPES:
+            raise ValueError(f"Тип операції має бути одним із: {', '.join(CASH_OPERATION_TYPES)}")
+        return v
+
+
+class CashOperationRead(BaseModel):
+    operation_id: int
+    shift_id: int
+    shift_z_number: int | None = None
+    shift_label: str
+    club_id: int
+    club_name: str
+    type: str
+    amount: Decimal
+    category: str | None = None
+    comment: str | None = None
+    created_at: datetime
+    created_by_user_id: int
+    created_by_name: str
+
+
+class CashOperationSummary(BaseModel):
+    count: int
+    cash_in: Decimal
+    cash_out: Decimal
+    collection: Decimal
+
+
+class CashOperationListResponse(BaseModel):
+    items: list[CashOperationRead]
+    total: int
+    summary: CashOperationSummary
+
+
+class ShiftRead(BaseModel):
+    shift_id: int
+    club_id: int
+    club_name: str
+    club_address: str
+    z_number: int | None = None
+    z_label: str
+    next_z_number: int | None = None
+    business_date: date_type
+    status: str
+    opened_at: datetime
+    opened_by_user_id: int
+    opened_by_name: str
+    opening_cash: Decimal
+    opening_difference: Decimal
+    open_note: str | None = None
+    closed_at: datetime | None = None
+    closed_by_user_id: int | None = None
+    closed_by_name: str | None = None
+    force_closed: bool
+    duration_minutes: int
+    revenue_total: Decimal
+    cash_sales: Decimal
+    card_sales: Decimal
+    bonus_sales: Decimal
+    avg_check: Decimal
+    payments_count: int
+    sessions_completed: int
+    sessions_cancelled: int
+    sessions_carried_over: int
+    active_sessions_now: int = 0
+    cash_in: Decimal
+    cash_out: Decimal
+    collection: Decimal
+    expected_cash: Decimal
+    actual_cash: Decimal
+    cash_difference: Decimal
+    cash_left: Decimal
+    card_terminal_total: Decimal | None = None
+    card_difference: Decimal | None = None
+    close_note: str | None = None
+    review_status: str
+    reviewed_by_user_id: int | None = None
+    reviewed_by_name: str | None = None
+    reviewed_at: datetime | None = None
+    review_note: str | None = None
+
+
+class ShiftDetailResponse(ShiftRead):
+    payments: list[PaymentRead] = []
+    operations: list[CashOperationRead] = []
+    active_sessions: list[SessionRead] = []
+
+
+class CurrentShiftStateResponse(BaseModel):
+    club_id: int | None = None
+    club_name: str = ""
+    is_open: bool = False
+    current_shift: ShiftDetailResponse | None = None
+    last_closed_shift: ShiftRead | None = None
+    suggested_opening_cash: Decimal = Decimal("0.00")
+
+
+class ShiftListResponse(BaseModel):
+    items: list[ShiftRead]
+    total: int
+    unreviewed_count: int = 0
+
+
+class DailyCashRow(BaseModel):
+    business_date: date_type
+    club_id: int
+    club_name: str
+    shifts_count: int
+    has_open_shift: bool
+    revenue_total: Decimal
+    cash_sales: Decimal
+    card_sales: Decimal
+    bonus_sales: Decimal
+    cash_in: Decimal
+    cash_out: Decimal
+    collection: Decimal
+    cash_difference: Decimal
+    cash_left_end_of_day: Decimal
+    shifts: list[ShiftRead] = []
+
+
+class DailyCashSummary(BaseModel):
+    days_count: int
+    shifts_count: int
+    revenue_total: Decimal
+    cash_sales: Decimal
+    card_sales: Decimal
+    bonus_sales: Decimal
+    cash_in: Decimal
+    cash_out: Decimal
+    collection: Decimal
+    cash_difference: Decimal
+
+
+class DailyCashResponse(BaseModel):
+    items: list[DailyCashRow]
+    summary: DailyCashSummary
+
 
 
 

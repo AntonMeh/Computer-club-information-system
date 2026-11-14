@@ -26,9 +26,20 @@ def _to_payment_read(p: models.Payment) -> schemas.PaymentRead:
     end_ref = s.end_time or p.payment_date
     mins, _ = calculate_duration_and_amount(s.start_time, end_ref, s.price_per_hour)
 
+    sh = p.shift
+    sh_z = sh.z_number if sh else None
+    sh_label = (
+        f"Z-{sh_z:04d}"
+        if sh_z is not None
+        else ("Триває" if sh and sh.status == "відкрита" else None)
+    )
+
     return schemas.PaymentRead(
         payment_id=p.payment_id,
         session_id=p.session_id,
+        shift_id=p.shift_id,
+        shift_z_number=sh_z,
+        shift_label=sh_label,
         amount=Decimal(p.amount).quantize(Decimal("0.01")),
         payment_date=p.payment_date,
         method=p.method,
@@ -59,6 +70,7 @@ def _filter_payments(
     date_from: date | None,
     date_to: date | None,
     method: str | None,
+    shift_id: int | None,
     q: str | None,
 ) -> list[schemas.PaymentRead]:
     stmt = (
@@ -79,6 +91,8 @@ def _filter_payments(
         stmt = stmt.where(models.Payment.payment_date <= datetime.combine(date_to, time.max))
     if method:
         stmt = stmt.where(models.Payment.method == method)
+    if shift_id is not None:
+        stmt = stmt.where(models.Payment.shift_id == shift_id)
 
     rows = db.scalars(stmt).all()
     items = [_to_payment_read(p) for p in rows]
@@ -103,6 +117,7 @@ def list_payments(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     method: str | None = Query(default=None),
+    shift_id: int | None = Query(default=None),
     q: str | None = Query(default=None),
     limit: int = Query(default=200, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
@@ -110,7 +125,7 @@ def list_payments(
     db: Session = Depends(get_db),
 ):
     effective_club_id = scoped_club_id(user, club_id)
-    items = _filter_payments(db, effective_club_id, date_from, date_to, method, q)
+    items = _filter_payments(db, effective_club_id, date_from, date_to, method, shift_id, q)
 
     total_sum = sum((it.amount for it in items), Decimal("0.00")).quantize(Decimal("0.01"))
     cash_sum = sum(
@@ -142,12 +157,13 @@ def export_payments_csv(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     method: str | None = Query(default=None),
+    shift_id: int | None = Query(default=None),
     q: str | None = Query(default=None),
     user: models.AppUser = Depends(require("payments", VIEW)),
     db: Session = Depends(get_db),
 ):
     effective_club_id = scoped_club_id(user, club_id)
-    items = _filter_payments(db, effective_club_id, date_from, date_to, method, q)
+    items = _filter_payments(db, effective_club_id, date_from, date_to, method, shift_id, q)
 
     buf = io.StringIO()
     buf.write("\ufeff")  # UTF-8 BOM для коректного відкриття в Excel

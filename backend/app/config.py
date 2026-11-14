@@ -17,9 +17,10 @@ class Settings(BaseSettings):
     login_max_attempts: int = 5
     login_lock_minutes: int = 5
 
-    # Бізнес-правила сеансів та бонусів (розділ 8 специфікації)
+    # Бізнес-правила сеансів, бонусів та каси (розділи 8 і 8.1 специфікації)
     bonus_rate: Decimal = Decimal("0.05")  # 5 % від оплати готівкою або карткою
     cancel_window_minutes: int = 5  # Адмін залу скасовує сеанси до 5 хв
+    cash_diff_alert: Decimal = Decimal("50.00")  # Поріг сповіщення про розбіжність каси (CASH_DIFF_ALERT)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

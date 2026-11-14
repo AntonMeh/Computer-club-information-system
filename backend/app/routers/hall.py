@@ -93,9 +93,26 @@ def get_hall(
             )
         )
 
+    open_shift = (
+        db.scalar(
+            select(models.Shift).where(
+                models.Shift.club_id == effective_club_id,
+                models.Shift.status == "відкрита",
+            )
+        )
+        if effective_club_id is not None
+        else None
+    )
+
     return schemas.HallResponse(
         server_time=now,
         club_id=effective_club_id,
+        shift_open=open_shift is not None,
+        current_shift_id=open_shift.shift_id if open_shift else None,
+        current_shift_opened_at=open_shift.opened_at if open_shift else None,
+        current_shift_opened_by=open_shift.opened_by.full_name
+        if open_shift and open_shift.opened_by
+        else None,
         summary=summary,
         items=items,
     )

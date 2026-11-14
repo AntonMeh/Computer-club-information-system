@@ -383,6 +383,15 @@ export function FinishSessionModal({ open, session, onClose, onFinished }) {
     return () => clearInterval(id);
   }, [open, session]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e) => {
+      if (e.key === "Escape" && !submitting) onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, submitting, onClose]);
+
   if (!open || !session) return null;
 
   const { minutes, amount } = calcLiveSession(
@@ -572,6 +581,15 @@ export function FinishSessionModal({ open, session, onClose, onFinished }) {
 export function ReceiptModal({ open, paymentId, initialPayment = null, onClose }) {
   const [payment, setPayment] = useState(initialPayment);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
 
   useEffect(() => {
     if (!open) return;

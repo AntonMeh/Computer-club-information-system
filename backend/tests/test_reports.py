@@ -87,14 +87,22 @@ def stage4_env(db):
     db.add_all([c1, c2])
     db.flush()
 
-    # Два завершені сеанси для c1 (щоб був клієнтом, що повернувся) + один активний на w2
+    # Два завершені сеанси для c1 сьогодні (щоб був клієнтом, що повернувся) + один активний на w2
+    today_start = datetime.combine(today, datetime.min.time())
+    ref_end = max(today_start + timedelta(minutes=30), now - timedelta(minutes=1))
+    s1_start = max(today_start + timedelta(minutes=1), ref_end - timedelta(minutes=25))
+    s1_end = s1_start + timedelta(minutes=10)
+    s2_start = s1_end + timedelta(minutes=2)
+    s2_end = s2_start + timedelta(minutes=10)
+    sa_start = s2_end + timedelta(minutes=1)
+
     s1 = models.GameSession(
         client_id=c1.client_id,
         workstation_id=w1.workstation_id,
         tariff_id=t_std.tariff_id,
         price_per_hour=Decimal("80.00"),
-        start_time=now - timedelta(hours=5),
-        end_time=now - timedelta(hours=3),
+        start_time=s1_start,
+        end_time=s1_end,
         status="завершений",
     )
     s2 = models.GameSession(
@@ -102,8 +110,8 @@ def stage4_env(db):
         workstation_id=w1.workstation_id,
         tariff_id=t_std.tariff_id,
         price_per_hour=Decimal("80.00"),
-        start_time=now - timedelta(hours=2, minutes=30),
-        end_time=now - timedelta(hours=1, minutes=30),
+        start_time=s2_start,
+        end_time=s2_end,
         status="завершений",
     )
     s_active = models.GameSession(
@@ -111,7 +119,7 @@ def stage4_env(db):
         workstation_id=w2.workstation_id,
         tariff_id=t_vip.tariff_id,
         price_per_hour=Decimal("130.00"),
-        start_time=now - timedelta(hours=1),
+        start_time=sa_start,
         end_time=None,
         status="активний",
     )
@@ -122,13 +130,13 @@ def stage4_env(db):
         session_id=s1.session_id,
         amount=Decimal("160.00"),
         method="готівка",
-        payment_date=now - timedelta(hours=3),
+        payment_date=s1_end,
     )
     p2 = models.Payment(
         session_id=s2.session_id,
         amount=Decimal("80.00"),
         method="картка",
-        payment_date=now - timedelta(hours=1, minutes=30),
+        payment_date=s2_end,
     )
     db.add_all([p1, p2])
 
@@ -151,10 +159,9 @@ def stage4_env(db):
     db.add(trn)
     db.flush()
 
-    part1 = models.TournamentParticipation(
+    part1 = models.Participation(
         tournament_id=trn.tournament_id,
         client_id=c1.client_id,
-        reg_date=today,
         place=1,
     )
     db.add(part1)
