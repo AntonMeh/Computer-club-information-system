@@ -4,7 +4,7 @@ import { X } from "lucide-react";
 /**
  * Універсальне модальне вікно (480px для size="sm", 640px для size="md").
  */
-export default function Modal({ open, onClose, title, size = "sm", children }) {
+export default function Modal({ open, onClose, title, subtitle, size = "sm", children }) {
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e) => {
@@ -19,35 +19,28 @@ export default function Modal({ open, onClose, title, size = "sm", children }) {
   return (
     <div className="modal-backdrop" onMouseDown={() => onClose?.()}>
       <div
-        className={`modal-card ${size === "md" ? "modal-card-lg" : ""}`}
-        style={{ maxWidth: size === "md" ? 640 : 480, width: "100%" }}
+        className={`modal-card ${size === "md" ? "modal-card-wide" : "modal-card-std"}`}
         role="dialog"
         aria-modal="true"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 14,
-            paddingBottom: 10,
-            borderBottom: "1px solid var(--border)",
-          }}
-        >
-          <h2 className="modal-title" style={{ margin: 0 }}>
-            {title}
-          </h2>
+        <div className="modal-top-bar">
+          <div>
+            <h2 className="modal-title" style={{ marginBottom: subtitle ? 2 : 0 }}>
+              {title}
+            </h2>
+            {subtitle && <p className="subtle-meta">{subtitle}</p>}
+          </div>
           <button
             type="button"
-            className="icon-btn"
+            className="btn-icon"
             aria-label="Закрити"
             onClick={() => onClose?.()}
           >
             <X size={18} />
           </button>
         </div>
-        <div>{children}</div>
+        {children}
       </div>
     </div>
   );

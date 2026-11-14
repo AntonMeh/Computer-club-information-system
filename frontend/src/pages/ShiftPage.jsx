@@ -5,17 +5,19 @@ import {
   ArrowRight,
   Calculator,
   CheckCircle2,
-  Clock,
   CreditCard,
   FileText,
   KeyRound,
   Lock,
   PlusCircle,
   Printer,
+  RefreshCw,
   ShieldAlert,
   Wallet,
 } from "lucide-react";
 import { api } from "../api.js";
+import { Badge, StatusBadge } from "../components/Badge.jsx";
+import { EmptyState, ErrorState, SkeletonTable } from "../components/Feedback.jsx";
 import Modal from "../components/Modal.jsx";
 import { useToast } from "../components/Toast.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -48,10 +50,10 @@ const EXPENSE_CATEGORIES = [
   "інше",
 ];
 
-function opBadgeClass(type) {
-  if (type === "внесення") return "badge badge-success";
-  if (type === "вилучення") return "badge badge-warning";
-  return "badge badge-info";
+function opBadgeVariant(type) {
+  if (type === "внесення") return "success";
+  if (type === "вилучення") return "warning";
+  return "info";
 }
 
 export default function ShiftPage() {
@@ -69,8 +71,8 @@ export default function ShiftPage() {
   }, [user, selectedClubId, clubs]);
 
   const [stateData, setStateData] = useState(null);
-  const [detailData, setDetailData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("payments");
 
   // Стан форми відкриття зміни
@@ -93,7 +95,7 @@ export default function ShiftPage() {
   const [showDenomCalc, setShowDenomCalc] = useState(false);
   const [denomCounts, setDenomCounts] = useState({});
   const [terminalCardTotal, setTerminalCardTotal] = useState("");
-  const [safeDropOnClose, setSafeDropOnClose] = useState("0");
+  const [collectionOnClose, setCollectionOnClose] = useState("0");
   const [closeComment, setCloseComment] = useState("");
   const [closeSubmitting, setCloseSubmitting] = useState(false);
 
@@ -105,28 +107,27 @@ export default function ShiftPage() {
   const loadShiftState = useCallback(async () => {
     if (!activeClubId) return;
     setLoading(true);
+    setError("");
     try {
       const current = await api.get(`/shifts/current?club_id=${activeClubId}`);
       setStateData(current);
-      if (current.current_shift) {
-        const detail = await api.get(`/shifts/${current.current_shift.shift_id}`);
-        setDetailData(detail);
-      } else {
-        setDetailData(null);
+      if (!current.current_shift) {
         setOpeningCash(String(Number(current.suggested_opening_cash ?? 0).toFixed(2)));
         setOpenComment("");
       }
     } catch (err) {
-      toast.error(err.message || "Не вдалося завантажити стан зміни");
+      setError(err.message || "Не вдалося завантажити стан зміни");
     } finally {
       setLoading(false);
     }
-  }, [activeClubId, toast]);
+  }, [activeClubId]);
 
   useEffect(() => {
     loadShiftState();
   }, [loadShiftState]);
 
+  const currentShift = stateData?.current_shift || null;
+  const lastShift = stateData?.last_closed_shift || null;
   const suggestedOpening = Number(stateData?.suggested_opening_cash ?? 0);
   const parsedOpening = Number(openingCash || 0);
   const openingDiff = useMemo(() => {
@@ -140,7 +141,7 @@ export default function ShiftPage() {
       toast.error("Вкажіть коректну суму готівки на початок зміни");
       return;
     }
-    if (openingDiff !== 0 && openComment.trim().length < 3) {
+    if (lastShift && openingDiff !== 0 && openComment.trim().length < 3) {
       toast.error("При розбіжності з попередньою зміною коментар є обов'язковим (мін. 3 символи)");
       return;
     }
@@ -170,7 +171,6 @@ export default function ShiftPage() {
     setOpModalOpen(true);
   };
 
-  const currentShift = detailData?.shift || stateData?.current_shift;
   const expectedCash = Number(currentShift?.expected_cash ?? 0);
 
   const handleCreateOperation = async (e) => {
@@ -181,9 +181,7 @@ export default function ShiftPage() {
       return;
     }
     if ((opType === "вилучення" || opType === "інкасація") && amountNum > expectedCash) {
-      toast.error(
-        `У касі недостатньо готівки (доступно ${formatMoney(expectedCash)})`
-      );
+      toast.error(`У касі недостатньо готівки (доступно ${formatMoney(expectedCash)})`);
       return;
     }
     if (opComment.trim().length < 3) {
@@ -193,7 +191,7 @@ export default function ShiftPage() {
     setOpSubmitting(true);
     try {
       await api.post("/cash-operations", {
-        shift_id: currentShift.shift_id,
+        club_id: activeClubId,
         type: opType,
         amount: Number(amountNum.toFixed(2)),
         category: opType === "вилучення" ? opCategory : null,
@@ -217,7 +215,7 @@ export default function ShiftPage() {
     setShowDenomCalc(false);
     setDenomCounts({});
     setTerminalCardTotal("");
-    setSafeDropOnClose("0");
+    setCollectionOnClose("0");
     setCloseComment("");
     setCloseWizardOpen(true);
   };
@@ -235,15 +233,15 @@ export default function ShiftPage() {
 
   const actualCashNum = Number(actualCash || 0);
   const cashDiff = Number((actualCashNum - expectedCash).toFixed(2));
-  const safeDropNum = Number(safeDropOnClose || 0);
-  const nextShiftClosingCash = Number(Math.max(0, actualCashNum - safeDropNum).toFixed(2));
+  const collectionNum = Number(collectionOnClose || 0);
+  const nextShiftCashLeft = Number(Math.max(0, actualCashNum - collectionNum).toFixed(2));
 
-  const revenueCardNum = Number(currentShift?.revenue_card ?? 0);
+  const cardSalesNum = Number(currentShift?.card_sales ?? 0);
   const hasTerminalInput = terminalCardTotal.trim() !== "";
   const terminalCardNum = hasTerminalInput ? Number(terminalCardTotal) : null;
   const cardDiff =
     terminalCardNum != null && !Number.isNaN(terminalCardNum)
-      ? Number((terminalCardNum - revenueCardNum).toFixed(2))
+      ? Number((terminalCardNum - cardSalesNum).toFixed(2))
       : null;
 
   const handleWizardNextFromStep2 = () => {
@@ -251,7 +249,7 @@ export default function ShiftPage() {
       toast.error("Вкажіть фактичну суму готівки в касі");
       return;
     }
-    if (Number.isNaN(safeDropNum) || safeDropNum < 0 || safeDropNum > actualCashNum) {
+    if (Number.isNaN(collectionNum) || collectionNum < 0 || collectionNum > actualCashNum) {
       toast.error("Інкасація при закритті має бути в межах від 0 до фактичної суми в касі");
       return;
     }
@@ -268,14 +266,14 @@ export default function ShiftPage() {
     try {
       const closed = await api.post(`/shifts/${currentShift.shift_id}/close`, {
         actual_cash: Number(actualCashNum.toFixed(2)),
-        safe_drop_on_close: Number(safeDropNum.toFixed(2)),
-        terminal_card_total:
+        collection: Number(collectionNum.toFixed(2)),
+        card_terminal_total:
           terminalCardNum != null && !Number.isNaN(terminalCardNum)
             ? Number(terminalCardNum.toFixed(2))
             : null,
         comment: closeComment.trim() || null,
       });
-      toast.success(`Зміну закрито. Сформовано Z-звіт Z-${String(closed.z_number).padStart(4, "0")}`);
+      toast.success(`Зміну закрито. Сформовано Z-звіт ${closed.z_label}`);
       setCloseWizardOpen(false);
       window.dispatchEvent(new CustomEvent("shift-updated"));
       navigate(`/cash/z/${closed.shift_id}`);
@@ -310,194 +308,42 @@ export default function ShiftPage() {
     }
   };
 
-  if (loading && !stateData) {
-    return (
-      <div className="page-container">
-        <p className="muted">Завантаження даних зміни…</p>
-      </div>
-    );
-  }
+  const payments = currentShift?.payments || [];
+  const operations = currentShift?.operations || [];
+  const activeSessions = currentShift?.active_sessions || [];
 
-  const lastShift = stateData?.last_closed_shift;
-  const payments = detailData?.payments || [];
-  const cashOperations = detailData?.cash_operations || [];
-  const activeSessions = detailData?.active_sessions || [];
+  const cashCount = payments.filter((p) => p.method === "готівка").length;
+  const cardCount = payments.filter((p) => p.method === "картка").length;
 
   return (
-    <div className="page-container">
-      {/* Якщо користувач мережевий і не обрав конкретний клуб, показуємо швидкий вибір клубу */}
-      {user?.club_id == null && clubs.length > 1 && (
-        <div className="filter-bar" style={{ marginBottom: 16 }}>
-          <label className="form-label" style={{ marginBottom: 0 }}>
-            Клуб для перегляду / керування зміною:
-          </label>
-          <select
-            className="form-select"
-            style={{ maxWidth: 260 }}
-            value={activeClubId}
-            onChange={(e) => setSelectedClubId(Number(e.target.value))}
+    <section className="page-section">
+      <div className="page-header">
+        <div className="hall-title-row">
+          <h1>Зміна</h1>
+          {stateData?.club_name && (
+            <span className="subtle-meta">{stateData.club_name}</span>
+          )}
+        </div>
+
+        <div className="header-actions no-print">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={loadShiftState}
           >
-            {clubs.map((c) => (
-              <option key={c.club_id} value={c.club_id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+            <RefreshCw size={15} aria-hidden="true" />
+            <span>Оновити</span>
+          </button>
 
-      {!currentShift ? (
-        /* Стан А — Зміну не відкрито */
-        <div className="shift-closed-wrapper">
-          <div className="card shift-open-card">
-            <div className="shift-closed-header">
-              <div className="shift-closed-icon">
-                <Lock size={26} />
-              </div>
-              <div>
-                <div className="shift-status-pill closed">Зміну не відкрито</div>
-                <h2 style={{ margin: "6px 0 4px", fontSize: 20 }}>
-                  {stateData?.club_name || "Обраний клуб"}
-                </h2>
-                {lastShift ? (
-                  <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-                    Остання зміна:{" "}
-                    <Link to={`/cash/z/${lastShift.shift_id}`} className="link-inline">
-                      Z-{String(lastShift.z_number || 0).padStart(4, "0")}
-                    </Link>
-                    , закрита {formatDateTime(lastShift.closed_at)} · залишок у касі:{" "}
-                    <strong className="tabular-nums">
-                      {formatMoney(lastShift.closing_cash)}
-                    </strong>
-                  </p>
-                ) : (
-                  <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-                    Попередніх закритих змін у цьому клубі ще немає.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {canManage ? (
-              <form onSubmit={handleOpenShift} className="shift-open-form">
-                <h3 className="section-subtitle" style={{ marginTop: 0 }}>
-                  Відкрити зміну
-                </h3>
-
-                <div className="form-group">
-                  <label className="form-label">Клуб</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={stateData?.club_name || `Клуб № ${activeClubId}`}
-                    disabled
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label" htmlFor="opening-cash-input">
-                    Готівка в касі на початок (₴) *
-                  </label>
-                  <input
-                    id="opening-cash-input"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    required
-                    className="form-input tabular-nums"
-                    value={openingCash}
-                    onChange={(e) => setOpeningCash(e.target.value)}
-                  />
-                  <span className="form-hint">
-                    Очікуваний залишок з попередньої зміни:{" "}
-                    <strong className="tabular-nums">{formatMoney(suggestedOpening)}</strong>
-                  </span>
-                </div>
-
-                {openingDiff !== 0 && (
-                  <div
-                    className={`alert ${
-                      openingDiff > 0 ? "alert-warning" : "alert-danger"
-                    }`}
-                    style={{ marginBottom: 12 }}
-                  >
-                    <AlertTriangle size={18} />
-                    <span>
-                      Розбіжність з кінцем попередньої зміни:{" "}
-                      <strong className="tabular-nums">
-                        {openingDiff > 0 ? "+" : ""}
-                        {formatMoney(openingDiff)}
-                      </strong>
-                      . Вкажіть пояснення нижче.
-                    </span>
-                  </div>
-                )}
-
-                <div className="form-group">
-                  <label className="form-label" htmlFor="opening-comment-input">
-                    Коментар / пояснення розбіжності {openingDiff !== 0 ? "*" : "(необов'язково)"}
-                  </label>
-                  <textarea
-                    id="opening-comment-input"
-                    rows={2}
-                    required={openingDiff !== 0}
-                    className="form-input"
-                    placeholder={
-                      openingDiff !== 0
-                        ? "Опишіть причину розбіжності готівки на початок зміни…"
-                        : "Нотатка до відкриття зміни (необов'язково)"
-                    }
-                    value={openComment}
-                    onChange={(e) => setOpenComment(e.target.value)}
-                  />
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={openingSubmitting}
-                  >
-                    <KeyRound size={16} />
-                    <span>{openingSubmitting ? "Відкриття…" : "Відкрити зміну"}</span>
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <p className="muted" style={{ marginTop: 16 }}>
-                У цьому клубі зміна наразі закрита. Тільки Адміністратор залу або Директор може відкрити зміну.
-              </p>
-            )}
-          </div>
-        </div>
-      ) : (
-        /* Стан Б — Зміна відкрита */
-        <>
-          <div className="card shift-active-header">
-            <div className="shift-active-meta">
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <span className="badge badge-success">Відкрита</span>
-                <h2 style={{ margin: 0, fontSize: 19 }}>
-                  Зміна Z-{String(currentShift.z_number || 1).padStart(4, "0")} (проєкт) ·{" "}
-                  {currentShift.club_name}
-                </h2>
-              </div>
-              <p className="muted" style={{ margin: "6px 0 0", fontSize: 13 }}>
-                Відкрита {formatDate(currentShift.opened_at)} о{" "}
-                {formatTime(currentShift.opened_at)} · триває{" "}
-                <strong>{formatDuration(currentShift.duration_min)}</strong> · відкрив{" "}
-                <strong>{currentShift.opened_by_name}</strong>
-              </p>
-            </div>
-
-            <div className="shift-active-actions no-print">
+          {currentShift && (
+            <>
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => window.print()}
+                onClick={() => navigate(`/cash/z/${currentShift.shift_id}`)}
               >
-                <Printer size={16} />
-                <span>X-звіт</span>
+                <Printer size={15} aria-hidden="true" />
+                <span>X-звіт (друк)</span>
               </button>
 
               {canManage && (
@@ -507,7 +353,7 @@ export default function ShiftPage() {
                     className="btn btn-secondary"
                     onClick={openOperationModal}
                   >
-                    <PlusCircle size={16} />
+                    <PlusCircle size={15} aria-hidden="true" />
                     <span>Службова операція</span>
                   </button>
 
@@ -520,7 +366,7 @@ export default function ShiftPage() {
                         setForceModalOpen(true);
                       }}
                     >
-                      <ShieldAlert size={16} />
+                      <ShieldAlert size={15} aria-hidden="true" />
                       <span>Закрити примусово</span>
                     </button>
                   )}
@@ -530,128 +376,324 @@ export default function ShiftPage() {
                     className="btn btn-primary"
                     onClick={openCloseWizard}
                   >
-                    <CheckCircle2 size={16} />
+                    <CheckCircle2 size={16} aria-hidden="true" />
                     <span>Закрити зміну</span>
                   </button>
                 </>
               )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Якщо користувач мережевий, показуємо вкладки за клубами (як у Залі) */}
+      {!user?.club_id && clubs.length > 1 && (
+        <div className="tabs-bar no-print" role="tablist" aria-label="Вибір клубу">
+          {clubs.map((c) => {
+            const isCurrent = Number(activeClubId) === Number(c.club_id);
+            return (
+              <button
+                key={c.club_id}
+                type="button"
+                role="tab"
+                aria-selected={isCurrent}
+                className={`tab-btn ${isCurrent ? "active" : ""}`}
+                onClick={() => setSelectedClubId(c.club_id)}
+              >
+                {c.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {loading && !stateData ? (
+        <div className="panel">
+          <SkeletonTable columns={4} rows={5} />
+        </div>
+      ) : error ? (
+        <div className="panel">
+          <ErrorState message={error} onRetry={loadShiftState} />
+        </div>
+      ) : !currentShift ? (
+        /* Стан А — Зміну не відкрито */
+        <div className="shift-closed-layout">
+          <div className="panel shift-open-panel">
+            <div className="shift-closed-banner">
+              <div className="shift-closed-icon-box">
+                <Lock size={24} />
+              </div>
+              <div className="shift-closed-banner-text">
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <Badge variant="neutral">Зміну не відкрито</Badge>
+                  <span className="subtle-meta">{stateData?.club_name}</span>
+                </div>
+                <h2 style={{ marginTop: 4 }}>Відкриття нової касової зміни</h2>
+                {lastShift ? (
+                  <p className="subtle-meta" style={{ marginTop: 4 }}>
+                    Попередня зміна:{" "}
+                    <Link to={`/cash/z/${lastShift.shift_id}`} className="table-link font-medium">
+                      {lastShift.z_label}
+                    </Link>{" "}
+                    (закрита {formatDateTime(lastShift.closed_at)}) · залишок у касі:{" "}
+                    <strong className="tabular-nums" style={{ color: "var(--ink)" }}>
+                      {formatMoney(lastShift.cash_left)}
+                    </strong>
+                  </p>
+                ) : (
+                  <p className="subtle-meta" style={{ marginTop: 4 }}>
+                    Попередніх закритих змін у цьому клубі ще немає.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {canManage ? (
+              <form onSubmit={handleOpenShift} className="stack-form">
+                <div className="two-col-fields">
+                  <div className="field">
+                    <label className="field-label">Клуб</label>
+                    <div className="readonly-pill">
+                      {stateData?.club_name || `Клуб № ${activeClubId}`}
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label className="field-label" htmlFor="opening-cash-input">
+                      Готівка в касі на початок (₴) <span className="required-mark">*</span>
+                    </label>
+                    <input
+                      id="opening-cash-input"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      className="tabular-nums"
+                      value={openingCash}
+                      onChange={(e) => setOpeningCash(e.target.value)}
+                    />
+                    <span className="subtle-meta">
+                      Очікується з минулої зміни:{" "}
+                      <strong className="tabular-nums">{formatMoney(suggestedOpening)}</strong>
+                    </span>
+                  </div>
+                </div>
+
+                {lastShift && openingDiff !== 0 && (
+                  <div
+                    className={`alert ${openingDiff > 0 ? "alert-warning" : ""}`}
+                    role="alert"
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <AlertTriangle size={18} />
+                      <span>
+                        Розбіжність із залишком попередньої зміни:{" "}
+                        <strong className="tabular-nums">
+                          {openingDiff > 0 ? "+" : ""}
+                          {formatMoney(openingDiff)}
+                        </strong>
+                        . Обов'язково вкажіть причину нижче.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="field">
+                  <label className="field-label" htmlFor="opening-comment-input">
+                    Коментар / пояснення розбіжності{" "}
+                    {lastShift && openingDiff !== 0 ? (
+                      <span className="required-mark">*</span>
+                    ) : (
+                      <span className="subtle-meta">(необов'язково)</span>
+                    )}
+                  </label>
+                  <textarea
+                    id="opening-comment-input"
+                    rows={2}
+                    required={Boolean(lastShift && openingDiff !== 0)}
+                    placeholder={
+                      lastShift && openingDiff !== 0
+                        ? "Опишіть причину розбіжності готівки на початок зміни…"
+                        : "Нотатка до відкриття зміни (необов'язково)"
+                    }
+                    value={openComment}
+                    onChange={(e) => setOpenComment(e.target.value)}
+                  />
+                </div>
+
+                <div className="drawer-form-actions">
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={openingSubmitting}
+                  >
+                    <KeyRound size={16} aria-hidden="true" />
+                    <span>{openingSubmitting ? "Відкриття…" : "Відкрити зміну"}</span>
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <p className="subtle-meta">
+                У цьому клубі зміна наразі закрита. Відкрити зміну може Адміністратор залу або Директор.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Стан Б — Зміна відкрита */
+        <>
+          <div className="panel shift-hero-panel">
+            <div className="shift-hero-left">
+              <div className="shift-hero-badges">
+                <Badge variant="success">Зміна відкрита</Badge>
+                <Badge variant="info">{currentShift.z_label}</Badge>
+                <span className="subtle-meta tabular-nums">
+                  Бізнес-дата: {formatDate(currentShift.business_date)}
+                </span>
+              </div>
+              <h2 className="shift-hero-title">
+                {currentShift.club_name} · відкрив {currentShift.opened_by_name}
+              </h2>
+              <p className="subtle-meta tabular-nums">
+                Початок: {formatDateTime(currentShift.opened_at)} · триває{" "}
+                <strong>{formatDuration(currentShift.duration_minutes)}</strong>
+              </p>
+            </div>
+
+            <div className="shift-hero-right">
+              <div className="shift-hero-stat">
+                <span className="subtle-meta">Очікується готівки в шухляді</span>
+                <span className="shift-hero-cash tabular-nums">
+                  {formatMoney(currentShift.expected_cash)}
+                </span>
+              </div>
             </div>
           </div>
 
           {/* 6 KPI карток поточної зміни */}
-          <div className="kpi-grid shift-kpi-grid" style={{ marginTop: 16 }}>
-            <div className="kpi-card">
-              <div className="kpi-title">Виручка за зміну</div>
-              <div className="kpi-value tabular-nums">
+          <div className="kpi-grid shift-kpi-grid-6">
+            <div className="panel kpi-card">
+              <span className="kpi-label">Виручка за зміну</span>
+              <span className="kpi-value tabular-nums accent-text">
                 {formatMoney(currentShift.revenue_total)}
-              </div>
-              <div className="kpi-sub">Готівка + Картка</div>
+              </span>
+              <span className="kpi-subtext tabular-nums">
+                Середній чек: {formatMoney(currentShift.avg_check)}
+              </span>
             </div>
 
-            <div className="kpi-card">
-              <div className="kpi-title">Готівка (оплати)</div>
-              <div className="kpi-value tabular-nums">
-                {formatMoney(currentShift.revenue_cash)}
-              </div>
-              <div className="kpi-sub tabular-nums">
-                {currentShift.cash_payments_count} оплат
-              </div>
+            <div className="panel kpi-card">
+              <span className="kpi-label">Готівка (оплати)</span>
+              <span className="kpi-value tabular-nums">
+                {formatMoney(currentShift.cash_sales)}
+              </span>
+              <span className="kpi-subtext tabular-nums">{cashCount} чеків</span>
             </div>
 
-            <div className="kpi-card">
-              <div className="kpi-title">Картка (термінал)</div>
-              <div className="kpi-value tabular-nums">
-                {formatMoney(currentShift.revenue_card)}
-              </div>
-              <div className="kpi-sub tabular-nums">
-                {currentShift.card_payments_count} оплат
-              </div>
+            <div className="panel kpi-card">
+              <span className="kpi-label">Картка (термінал)</span>
+              <span className="kpi-value tabular-nums">
+                {formatMoney(currentShift.card_sales)}
+              </span>
+              <span className="kpi-subtext tabular-nums">{cardCount} чеків</span>
             </div>
 
-            <div className="kpi-card">
-              <div className="kpi-title">Бонуси списано</div>
-              <div className="kpi-value tabular-nums">
-                {formatMoney(currentShift.revenue_bonus)}
-              </div>
-              <div className="kpi-sub">Не входять у грошову виручку</div>
+            <div className="panel kpi-card">
+              <span className="kpi-label">Бонуси списано</span>
+              <span className="kpi-value tabular-nums">
+                {formatMoney(currentShift.bonus_sales)}
+              </span>
+              <span className="kpi-subtext">Не входять у грошову шухляду</span>
             </div>
 
-            <div className="kpi-card">
-              <div className="kpi-title">Сеансів завершено</div>
-              <div className="kpi-value tabular-nums">
+            <div className="panel kpi-card">
+              <span className="kpi-label">Сеансів завершено</span>
+              <span className="kpi-value tabular-nums">
                 {currentShift.sessions_completed}
-              </div>
-              <div className="kpi-sub tabular-nums">
-                скасовано: {currentShift.sessions_cancelled}
-              </div>
+              </span>
+              <span className="kpi-subtext tabular-nums">
+                Скасовано без оплати: {currentShift.sessions_cancelled}
+              </span>
             </div>
 
-            <div className="kpi-card">
-              <div className="kpi-title">Активних сеансів зараз</div>
-              <div className="kpi-value tabular-nums">
-                {currentShift.active_sessions_count}
-              </div>
-              <div className="kpi-sub">
-                {currentShift.active_sessions_count > 0 ? (
-                  <Link to="/hall" className="link-inline">
+            <div className="panel kpi-card">
+              <span className="kpi-label">Активних сеансів зараз</span>
+              <span className="kpi-value tabular-nums">
+                {currentShift.active_sessions_now}
+              </span>
+              <span className="kpi-subtext">
+                {currentShift.active_sessions_now > 0 ? (
+                  <Link to="/hall" className="table-link font-medium">
                     Перейти в зал →
                   </Link>
                 ) : (
                   "Усі місця вільні"
                 )}
-              </div>
+              </span>
             </div>
           </div>
 
-          {/* Блок «Готівка в касі» (формула шухляди) */}
-          <div className="card cash-drawer-card" style={{ marginTop: 16 }}>
-            <div className="card-header-row" style={{ marginBottom: 12 }}>
-              <h3 className="section-subtitle" style={{ margin: 0 }}>
-                <Wallet size={18} style={{ verticalAlign: "text-bottom", marginRight: 6 }} />
-                Готівка в касі (розрахунок грошової шухляди)
-              </h3>
-              <span className="muted" style={{ fontSize: 12 }}>
-                Проміжний стан (X-звіт)
+          {/* Блок «Готівка в касі» (формула грошової шухляди) */}
+          <div className="panel cash-drawer-panel">
+            <div className="dashboard-panel-header" style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Wallet size={18} className="accent-text" />
+                <h2 className="section-title" style={{ marginBottom: 0 }}>
+                  Готівка в касі (розрахунок грошової шухляди)
+                </h2>
+              </div>
+              <span className="subtle-meta">
+                Очікується = Початок + Готівкові оплати + Внесення − Вилучення − Інкасація
               </span>
             </div>
 
-            <div className="cash-formula-row">
-              <div className="cash-formula-item">
+            <div className="cash-formula-grid">
+              <div className="cash-formula-box">
                 <span className="cash-formula-label">На початок зміни</span>
                 <span className="cash-formula-val tabular-nums">
                   {formatMoney(currentShift.opening_cash)}
                 </span>
               </div>
-              <span className="cash-formula-op">+</span>
-              <div className="cash-formula-item">
+
+              <div className="cash-formula-sign">+</div>
+
+              <div className="cash-formula-box">
                 <span className="cash-formula-label">Готівкові оплати</span>
-                <span className="cash-formula-val tabular-nums text-success">
-                  +{formatMoney(currentShift.revenue_cash)}
+                <span className="cash-formula-val tabular-nums kpi-value-positive">
+                  +{formatMoney(currentShift.cash_sales)}
                 </span>
               </div>
-              <span className="cash-formula-op">+</span>
-              <div className="cash-formula-item">
+
+              <div className="cash-formula-sign">+</div>
+
+              <div className="cash-formula-box">
                 <span className="cash-formula-label">Службові внесення</span>
-                <span className="cash-formula-val tabular-nums text-success">
-                  +{formatMoney(currentShift.cash_in_total)}
+                <span className="cash-formula-val tabular-nums kpi-value-positive">
+                  +{formatMoney(currentShift.cash_in)}
                 </span>
               </div>
-              <span className="cash-formula-op">−</span>
-              <div className="cash-formula-item">
+
+              <div className="cash-formula-sign">−</div>
+
+              <div className="cash-formula-box">
                 <span className="cash-formula-label">Службові вилучення</span>
-                <span className="cash-formula-val tabular-nums text-warning">
-                  −{formatMoney(currentShift.cash_out_total)}
+                <span className="cash-formula-val tabular-nums kpi-value-warning">
+                  −{formatMoney(currentShift.cash_out)}
                 </span>
               </div>
-              <span className="cash-formula-op">−</span>
-              <div className="cash-formula-item">
+
+              <div className="cash-formula-sign">−</div>
+
+              <div className="cash-formula-box">
                 <span className="cash-formula-label">Інкасація за зміну</span>
                 <span className="cash-formula-val tabular-nums text-info">
-                  −{formatMoney(currentShift.safe_drop_total)}
+                  −{formatMoney(currentShift.collection)}
                 </span>
               </div>
-              <span className="cash-formula-op">=</span>
-              <div className="cash-formula-item expected">
+
+              <div className="cash-formula-sign">=</div>
+
+              <div className="cash-formula-box expected">
                 <span className="cash-formula-label">Очікується в касі</span>
                 <span className="cash-formula-expected tabular-nums">
                   {formatMoney(currentShift.expected_cash)}
@@ -661,82 +703,105 @@ export default function ShiftPage() {
           </div>
 
           {/* Вкладки: Оплати за зміну та Службові операції */}
-          <div className="card" style={{ marginTop: 16 }}>
-            <div className="tabs-bar no-print" style={{ marginBottom: 14 }}>
+          <div className="filters-bar no-print">
+            <div className="tabs-bar" role="tablist">
               <button
                 type="button"
+                role="tab"
+                aria-selected={activeTab === "payments"}
                 className={`tab-btn ${activeTab === "payments" ? "active" : ""}`}
                 onClick={() => setActiveTab("payments")}
               >
-                <CreditCard size={15} />
+                <CreditCard size={15} aria-hidden="true" />
                 <span>Оплати за зміну ({payments.length})</span>
               </button>
               <button
                 type="button"
+                role="tab"
+                aria-selected={activeTab === "operations"}
                 className={`tab-btn ${activeTab === "operations" ? "active" : ""}`}
                 onClick={() => setActiveTab("operations")}
               >
-                <FileText size={15} />
-                <span>Службові операції ({cashOperations.length})</span>
+                <FileText size={15} aria-hidden="true" />
+                <span>Службові операції ({operations.length})</span>
               </button>
             </div>
+          </div>
 
+          <div className="panel table-wrap">
             {activeTab === "payments" ? (
               payments.length === 0 ? (
-                <p className="muted" style={{ padding: "16px 0", textAlign: "center" }}>
-                  У межах поточної зміни оплат ще не проведено.
-                </p>
+                <EmptyState text="У межах поточної зміни оплат ще не проведено." />
               ) : (
-                <div className="table-wrap">
-                  <table className="data-table">
+                <>
+                  <table>
                     <thead>
                       <tr>
-                        <th>ID</th>
-                        <th>Час</th>
+                        <th>№</th>
+                        <th>Дата й час</th>
                         <th>Клієнт</th>
-                        <th>Сеанс / Місце</th>
-                        <th>Спосіб оплати</th>
+                        <th>Сеанс і місце</th>
+                        <th>Тариф</th>
+                        <th>Спосіб</th>
                         <th className="num">Сума</th>
                       </tr>
                     </thead>
                     <tbody>
                       {payments.map((p) => (
                         <tr key={p.payment_id}>
-                          <td className="tabular-nums">#{p.payment_id}</td>
-                          <td className="tabular-nums">{formatDateTime(p.paid_at)}</td>
-                          <td>{p.client_name || "Гість без реєстрації"}</td>
+                          <td className="tabular-nums font-medium">№ {p.payment_id}</td>
+                          <td className="tabular-nums">{formatDateTime(p.payment_date)}</td>
                           <td>
-                            Сеанс #{p.session_id} · {p.workstation_name || "—"}
-                          </td>
-                          <td>
-                            <span
-                              className={`badge ${
-                                p.payment_method === "готівка"
-                                  ? "badge-success"
-                                  : p.payment_method === "картка"
-                                  ? "badge-info"
-                                  : "badge-neutral"
-                              }`}
+                            <Link
+                              to={`/clients/${p.client_id}`}
+                              className="table-link font-medium"
                             >
-                              {p.payment_method}
-                            </span>
+                              {p.client_name}
+                            </Link>
                           </td>
-                          <td className="num tabular-nums">{formatMoney(p.amount)}</td>
+                          <td>
+                            Сеанс № {p.session_id} · місце №{" "}
+                            {String(p.workstation_number).padStart(2, "0")}{" "}
+                            <span className="subtle-meta">({p.workstation_type})</span>
+                          </td>
+                          <td>{p.tariff_name}</td>
+                          <td>
+                            <StatusBadge status={p.method} />
+                          </td>
+                          <td className="num tabular-nums font-medium">
+                            {formatMoney(p.amount)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                </div>
+                  <div className="table-summary-bar tabular-nums">
+                    <span>
+                      Чеків: <strong>{payments.length}</strong>
+                    </span>
+                    <span>
+                      Готівка: <strong>{formatMoney(currentShift.cash_sales)}</strong>
+                    </span>
+                    <span>
+                      Картка: <strong>{formatMoney(currentShift.card_sales)}</strong>
+                    </span>
+                    <span>
+                      Бонуси: <strong>{formatMoney(currentShift.bonus_sales)}</strong>
+                    </span>
+                    <span>
+                      Разом: <strong>{formatMoney(currentShift.revenue_total)}</strong>
+                    </span>
+                  </div>
+                </>
               )
-            ) : cashOperations.length === 0 ? (
-              <p className="muted" style={{ padding: "16px 0", textAlign: "center" }}>
-                Службових операцій за поточну зміну немає.
-              </p>
+            ) : operations.length === 0 ? (
+              <EmptyState text="Службових операцій за поточну зміну ще не проводилося." />
             ) : (
-              <div className="table-wrap">
-                <table className="data-table">
+              <>
+                <table>
                   <thead>
                     <tr>
+                      <th>№</th>
                       <th>Час</th>
                       <th>Тип</th>
                       <th>Категорія</th>
@@ -746,28 +811,51 @@ export default function ShiftPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {cashOperations.map((op) => (
+                    {operations.map((op) => (
                       <tr key={op.operation_id}>
+                        <td className="tabular-nums font-medium">№ {op.operation_id}</td>
                         <td className="tabular-nums">{formatDateTime(op.created_at)}</td>
                         <td>
-                          <span className={opBadgeClass(op.type)}>{op.type}</span>
+                          <Badge variant={opBadgeVariant(op.type)}>{op.type}</Badge>
                         </td>
                         <td>{op.category || "—"}</td>
                         <td
-                          className={`num tabular-nums ${
-                            op.type === "внесення" ? "text-success" : "text-danger"
+                          className={`num tabular-nums font-medium ${
+                            op.type === "внесення"
+                              ? "kpi-value-positive"
+                              : "kpi-value-negative"
                           }`}
                         >
                           {op.type === "внесення" ? "+" : "−"}
                           {formatMoney(op.amount)}
                         </td>
-                        <td>{op.staff_name}</td>
-                        <td>{op.comment}</td>
+                        <td>{op.created_by_name}</td>
+                        <td>{op.comment || "—"}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
+                <div className="table-summary-bar tabular-nums">
+                  <span>
+                    Внесення:{" "}
+                    <strong className="kpi-value-positive">
+                      +{formatMoney(currentShift.cash_in)}
+                    </strong>
+                  </span>
+                  <span>
+                    Вилучення:{" "}
+                    <strong className="kpi-value-warning">
+                      −{formatMoney(currentShift.cash_out)}
+                    </strong>
+                  </span>
+                  <span>
+                    Інкасація:{" "}
+                    <strong className="text-info">
+                      −{formatMoney(currentShift.collection)}
+                    </strong>
+                  </span>
+                </div>
+              </>
             )}
           </div>
         </>
@@ -778,40 +866,36 @@ export default function ShiftPage() {
         open={opModalOpen}
         onClose={() => setOpModalOpen(false)}
         title="Службова касова операція"
+        subtitle={currentShift ? `${currentShift.club_name} · ${currentShift.z_label}` : ""}
         size="sm"
       >
-        <form onSubmit={handleCreateOperation}>
-          <div className="form-group">
-            <label className="form-label">Тип операції *</label>
-            <div className="segmented-control">
-              {["внесення", "вилучення", "інкасація"].map((t) => (
+        <form onSubmit={handleCreateOperation} className="stack-form">
+          <div className="field">
+            <label className="field-label">
+              Тип операції <span className="required-mark">*</span>
+            </label>
+            <div className="payment-methods-grid">
+              {[
+                { key: "внесення", title: "+ Внесення", sub: "Розмін у касу" },
+                { key: "вилучення", title: "− Вилучення", sub: "Витрата з каси" },
+                { key: "інкасація", title: "− Інкасація", sub: "Здача в сейф" },
+              ].map((item) => (
                 <button
-                  key={t}
+                  key={item.key}
                   type="button"
-                  className={`segment-btn ${opType === t ? "active" : ""}`}
-                  onClick={() => setOpType(t)}
+                  className={`payment-method-btn ${opType === item.key ? "active" : ""}`}
+                  onClick={() => setOpType(item.key)}
                 >
-                  {t === "внесення"
-                    ? "+ Внесення"
-                    : t === "вилучення"
-                    ? "− Вилучення"
-                    : "− Інкасація"}
+                  <span className="pm-title">{item.title}</span>
+                  <span className="pm-sub">{item.sub}</span>
                 </button>
               ))}
             </div>
-            <span className="form-hint">
-              {opType === "внесення" &&
-                "Поповнення каси розмінною монетою або повернення здачі."}
-              {opType === "вилучення" &&
-                "Дрібні господарські витрати з каси або видача під звіт (автоматично створює запис у Витратах)."}
-              {opType === "інкасація" &&
-                "Проміжна здача готівкової виручки в сейф протягом зміни."}
-            </span>
           </div>
 
-          <div className="form-group">
-            <label className="form-label" htmlFor="op-amount-input">
-              Сума (₴) *
+          <div className="field">
+            <label className="field-label" htmlFor="op-amount-input">
+              Сума (₴) <span className="required-mark">*</span>
             </label>
             <input
               id="op-amount-input"
@@ -819,13 +903,13 @@ export default function ShiftPage() {
               step="0.01"
               min="0.01"
               required
-              className="form-input tabular-nums"
+              className="tabular-nums"
               placeholder="0.00"
               value={opAmount}
               onChange={(e) => setOpAmount(e.target.value)}
             />
             {(opType === "вилучення" || opType === "інкасація") && (
-              <span className="form-hint">
+              <span className="subtle-meta">
                 Доступно готівки в касі:{" "}
                 <strong className="tabular-nums">{formatMoney(expectedCash)}</strong>
               </span>
@@ -833,13 +917,12 @@ export default function ShiftPage() {
           </div>
 
           {opType === "вилучення" && (
-            <div className="form-group">
-              <label className="form-label" htmlFor="op-cat-select">
-                Категорія витрат *
+            <div className="field">
+              <label className="field-label" htmlFor="op-cat-select">
+                Категорія витрат <span className="required-mark">*</span>
               </label>
               <select
                 id="op-cat-select"
-                className="form-select"
                 value={opCategory}
                 onChange={(e) => setOpCategory(e.target.value)}
               >
@@ -852,16 +935,15 @@ export default function ShiftPage() {
             </div>
           )}
 
-          <div className="form-group">
-            <label className="form-label" htmlFor="op-comment-input">
-              Коментар * (мін. 3 символи)
+          <div className="field">
+            <label className="field-label" htmlFor="op-comment-input">
+              Коментар <span className="required-mark">*</span>
             </label>
             <textarea
               id="op-comment-input"
               rows={2}
               required
               minLength={3}
-              className="form-input"
               placeholder="Наприклад: Розмін на початок зміни / Вода в кулер / Інкасація в сейф"
               value={opComment}
               onChange={(e) => setOpComment(e.target.value)}
@@ -888,13 +970,22 @@ export default function ShiftPage() {
         open={closeWizardOpen}
         onClose={() => setCloseWizardOpen(false)}
         title={`Закриття зміни · Крок ${wizardStep} з 3`}
+        subtitle={currentShift ? `${currentShift.club_name} · ${currentShift.z_label}` : ""}
         size="md"
       >
         <div className="wizard-steps-indicator">
-          <div className={`wizard-step-pill ${wizardStep === 1 ? "active" : wizardStep > 1 ? "done" : ""}`}>
+          <div
+            className={`wizard-step-pill ${
+              wizardStep === 1 ? "active" : wizardStep > 1 ? "done" : ""
+            }`}
+          >
             1. Активні сеанси
           </div>
-          <div className={`wizard-step-pill ${wizardStep === 2 ? "active" : wizardStep > 2 ? "done" : ""}`}>
+          <div
+            className={`wizard-step-pill ${
+              wizardStep === 2 ? "active" : wizardStep > 2 ? "done" : ""
+            }`}
+          >
             2. Підрахунок каси
           </div>
           <div className={`wizard-step-pill ${wizardStep === 3 ? "active" : ""}`}>
@@ -903,44 +994,53 @@ export default function ShiftPage() {
         </div>
 
         {wizardStep === 1 && (
-          <div>
+          <div className="stack-form">
             {activeSessions.length > 0 ? (
-              <div className="alert alert-warning" style={{ marginBottom: 14 }}>
-                <AlertTriangle size={18} />
-                <div>
-                  <strong>
-                    У залі ще тривають {activeSessions.length} активних сеансів.
-                  </strong>
-                  <div style={{ fontSize: 13, marginTop: 2 }}>
-                    Вони автоматично перейдуть у наступну зміну й будуть оплачені при завершенні.
+              <div className="alert alert-warning" role="status">
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: 2 }} />
+                  <div>
+                    <strong>
+                      У залі ще тривають {activeSessions.length} активних сеансів.
+                    </strong>
+                    <div style={{ fontSize: 13, marginTop: 2 }}>
+                      Вони автоматично перейдуть у наступну зміну й будуть оплачені при завершенні.
+                    </div>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="alert alert-success" style={{ marginBottom: 14 }}>
-                <CheckCircle2 size={18} />
-                <span>Усі сеанси в клубі завершено. Жоден сеанс не переноситься.</span>
+              <div className="dashboard-ok-box">
+                <CheckCircle2 size={20} className="ok-icon" />
+                <div>
+                  <div className="font-medium">Усі сеанси завершено</div>
+                  <div className="subtle-meta">
+                    Активних сеансів у залі немає — можна переходити до підрахунку каси.
+                  </div>
+                </div>
               </div>
             )}
 
             {activeSessions.length > 0 && (
-              <div className="table-wrap" style={{ marginBottom: 14 }}>
-                <table className="data-table">
+              <div className="table-wrap" style={{ border: "1px solid var(--line)", borderRadius: 6 }}>
+                <table>
                   <thead>
                     <tr>
                       <th>Місце</th>
                       <th>Клієнт</th>
                       <th>Початок</th>
-                      <th>Триває</th>
+                      <th className="num">Триває</th>
                     </tr>
                   </thead>
                   <tbody>
                     {activeSessions.map((s) => (
                       <tr key={s.session_id}>
-                        <td>{s.workstation_name}</td>
+                        <td className="font-medium">
+                          № {String(s.workstation_number).padStart(2, "0")} ({s.workstation_type})
+                        </td>
                         <td>{s.client_name}</td>
                         <td className="tabular-nums">{formatTime(s.start_time)}</td>
-                        <td className="tabular-nums">{formatDuration(s.elapsed_min)}</td>
+                        <td className="num tabular-nums">{formatDuration(s.duration_minutes)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -974,22 +1074,22 @@ export default function ShiftPage() {
         )}
 
         {wizardStep === 2 && (
-          <div>
-            <div className="cash-summary-banner">
-              <span>Очікується готівки в касі:</span>
-              <strong className="tabular-nums" style={{ fontSize: 18 }}>
+          <div className="stack-form">
+            <div className="pay-total-banner">
+              <span className="pay-total-label">Очікується готівки в касі:</span>
+              <span className="pay-total-value tabular-nums">
                 {formatMoney(expectedCash)}
-              </strong>
+              </span>
             </div>
 
-            <div className="form-group" style={{ marginTop: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <label className="form-label" htmlFor="actual-cash-input" style={{ marginBottom: 4 }}>
-                  Фактично в касі (перераховано, ₴) *
+            <div className="field">
+              <div className="field-label-row">
+                <label className="field-label" htmlFor="actual-cash-input">
+                  Фактично в касі (перераховано, ₴) <span className="required-mark">*</span>
                 </label>
                 <button
                   type="button"
-                  className="btn-link"
+                  className="link-action"
                   onClick={() => setShowDenomCalc((v) => !v)}
                 >
                   <Calculator size={14} />
@@ -1004,7 +1104,7 @@ export default function ShiftPage() {
                 step="0.01"
                 min="0"
                 required
-                className="form-input tabular-nums"
+                className="tabular-nums"
                 value={actualCash}
                 onChange={(e) => setActualCash(e.target.value)}
               />
@@ -1019,7 +1119,7 @@ export default function ShiftPage() {
                       type="number"
                       min="0"
                       step="1"
-                      className="form-input denom-input tabular-nums"
+                      className="denom-input tabular-nums"
                       placeholder="0"
                       value={denomCounts[d.value] ?? ""}
                       onChange={(e) => handleDenomChange(d.value, e.target.value)}
@@ -1035,7 +1135,7 @@ export default function ShiftPage() {
                 cashDiff === 0 ? "ok" : cashDiff > 0 ? "surplus" : "shortage"
               }`}
             >
-              <span>Різниця (каса):</span>
+              <span>Різниця по касі:</span>
               <strong className="tabular-nums">
                 {cashDiff === 0
                   ? "0,00 ₴ — Збігається"
@@ -1045,9 +1145,9 @@ export default function ShiftPage() {
               </strong>
             </div>
 
-            <div className="form-row-2" style={{ marginTop: 12 }}>
-              <div className="form-group">
-                <label className="form-label" htmlFor="terminal-card-input">
+            <div className="two-col-fields">
+              <div className="field">
+                <label className="field-label" htmlFor="terminal-card-input">
                   Підсумок за терміналом (картка), необов'язково
                 </label>
                 <input
@@ -1055,15 +1155,15 @@ export default function ShiftPage() {
                   type="number"
                   step="0.01"
                   min="0"
-                  className="form-input tabular-nums"
-                  placeholder={`За системою: ${formatMoney(revenueCardNum)}`}
+                  className="tabular-nums"
+                  placeholder={`За системою: ${formatMoney(cardSalesNum)}`}
                   value={terminalCardTotal}
                   onChange={(e) => setTerminalCardTotal(e.target.value)}
                 />
                 {cardDiff != null && (
                   <span
-                    className={`form-hint ${
-                      cardDiff === 0 ? "text-success" : "text-danger"
+                    className={`subtle-meta ${
+                      cardDiff === 0 ? "kpi-value-positive" : "kpi-value-negative"
                     }`}
                   >
                     Різниця з терміналом:{" "}
@@ -1075,8 +1175,8 @@ export default function ShiftPage() {
                 )}
               </div>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="safe-drop-close-input">
+              <div className="field">
+                <label className="field-label" htmlFor="safe-drop-close-input">
                   Здати виручку в сейф (інкасація при закритті, ₴)
                 </label>
                 <input
@@ -1085,26 +1185,32 @@ export default function ShiftPage() {
                   step="0.01"
                   min="0"
                   max={actualCashNum}
-                  className="form-input tabular-nums"
-                  value={safeDropOnClose}
-                  onChange={(e) => setSafeDropOnClose(e.target.value)}
+                  className="tabular-nums"
+                  value={collectionOnClose}
+                  onChange={(e) => setCollectionOnClose(e.target.value)}
                 />
-                <span className="form-hint">
+                <span className="subtle-meta">
                   Залишок у касі на наступну зміну:{" "}
-                  <strong className="tabular-nums">{formatMoney(nextShiftClosingCash)}</strong>
+                  <strong className="tabular-nums" style={{ color: "var(--ink)" }}>
+                    {formatMoney(nextShiftCashLeft)}
+                  </strong>
                 </span>
               </div>
             </div>
 
-            <div className="form-group">
-              <label className="form-label" htmlFor="close-comment-input">
-                Пояснення розбіжності / коментар {cashDiff !== 0 ? "*" : "(необов'язково)"}
+            <div className="field">
+              <label className="field-label" htmlFor="close-comment-input">
+                Пояснення розбіжності / коментар{" "}
+                {cashDiff !== 0 ? (
+                  <span className="required-mark">*</span>
+                ) : (
+                  <span className="subtle-meta">(необов'язково)</span>
+                )}
               </label>
               <textarea
                 id="close-comment-input"
                 rows={2}
                 required={cashDiff !== 0}
-                className="form-input"
                 placeholder={
                   cashDiff !== 0
                     ? "Обов'язково вкажіть причину лишку або недостачі в касі…"
@@ -1136,21 +1242,23 @@ export default function ShiftPage() {
         )}
 
         {wizardStep === 3 && currentShift && (
-          <div>
-            <div className="alert alert-warning" style={{ marginBottom: 12 }}>
-              <AlertTriangle size={18} />
-              <span>
-                Після закриття зміни показники Z-звіту фіксуються і не можуть бути відредаговані.
-              </span>
+          <div className="stack-form">
+            <div className="alert alert-warning" role="status">
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <AlertTriangle size={18} />
+                <span>
+                  Після закриття зміни показники Z-звіту фіксуються і не можуть бути відредаговані.
+                </span>
+              </div>
             </div>
 
             <div className="z-preview-box">
               <div className="z-preview-row">
-                <span>Z-звіт №:</span>
-                <strong>Z-{String(currentShift.z_number || 1).padStart(4, "0")}</strong>
+                <span>Майбутній Z-звіт:</span>
+                <strong>Z-{String(currentShift.next_z_number || 1).padStart(4, "0")}</strong>
               </div>
               <div className="z-preview-row">
-                <span>Виручка (Готівка + Картка):</span>
+                <span>Загальна виручка зміни:</span>
                 <strong className="tabular-nums">
                   {formatMoney(currentShift.revenue_total)}
                 </strong>
@@ -1160,7 +1268,7 @@ export default function ShiftPage() {
                 <span className="tabular-nums">{formatMoney(expectedCash)}</span>
               </div>
               <div className="z-preview-row">
-                <span>Фактично готівки в касі:</span>
+                <span>Фактично перераховано в касі:</span>
                 <strong className="tabular-nums">{formatMoney(actualCashNum)}</strong>
               </div>
               <div className="z-preview-row">
@@ -1168,10 +1276,10 @@ export default function ShiftPage() {
                 <strong
                   className={`tabular-nums ${
                     cashDiff === 0
-                      ? "text-success"
+                      ? "kpi-value-positive"
                       : cashDiff > 0
-                      ? "text-warning"
-                      : "text-danger"
+                      ? "kpi-value-warning"
+                      : "kpi-value-negative"
                   }`}
                 >
                   {cashDiff > 0 ? "+" : ""}
@@ -1180,15 +1288,17 @@ export default function ShiftPage() {
               </div>
               <div className="z-preview-row">
                 <span>Інкасація при закритті:</span>
-                <span className="tabular-nums">−{formatMoney(safeDropNum)}</span>
+                <span className="tabular-nums">−{formatMoney(collectionNum)}</span>
               </div>
               <div className="z-preview-row highlight">
                 <span>Залишок у касі на наступну зміну:</span>
-                <strong className="tabular-nums">{formatMoney(nextShiftClosingCash)}</strong>
+                <strong className="tabular-nums accent-text">
+                  {formatMoney(nextShiftCashLeft)}
+                </strong>
               </div>
             </div>
 
-            <div className="modal-actions" style={{ marginTop: 16 }}>
+            <div className="modal-actions">
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -1220,27 +1330,29 @@ export default function ShiftPage() {
         open={forceModalOpen}
         onClose={() => setForceModalOpen(false)}
         title="Примусове закриття зміни"
+        subtitle={currentShift ? `${currentShift.club_name} · ${currentShift.z_label}` : ""}
         size="sm"
       >
-        <form onSubmit={handleForceClose}>
-          <div className="alert alert-warning" style={{ marginBottom: 12 }}>
-            <ShieldAlert size={18} />
-            <span>
-              Використовуйте лише якщо адміністратор покинув клуб, не закривши зміну. Фактична
-              готівка буде зафіксована рівною очікуваній ({formatMoney(expectedCash)}).
-            </span>
+        <form onSubmit={handleForceClose} className="stack-form">
+          <div className="alert alert-warning" role="status">
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+              <ShieldAlert size={18} style={{ flexShrink: 0, marginTop: 2 }} />
+              <span>
+                Використовуйте лише якщо адміністратор покинув клуб, не закривши зміну. Фактична
+                готівка буде зафіксована рівною очікуваній ({formatMoney(expectedCash)}).
+              </span>
+            </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label" htmlFor="force-comment-input">
-              Причина примусового закриття *
+          <div className="field">
+            <label className="field-label" htmlFor="force-comment-input">
+              Причина примусового закриття <span className="required-mark">*</span>
             </label>
             <textarea
               id="force-comment-input"
               rows={3}
               required
               minLength={3}
-              className="form-input"
               placeholder="Вкажіть причину примусового закриття зміни директором…"
               value={forceComment}
               onChange={(e) => setForceComment(e.target.value)}
@@ -1261,6 +1373,6 @@ export default function ShiftPage() {
           </div>
         </form>
       </Modal>
-    </div>
+    </section>
   );
 }

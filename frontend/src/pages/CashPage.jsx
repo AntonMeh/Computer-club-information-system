@@ -3,17 +3,17 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   Calendar,
-  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
   Download,
   FileSpreadsheet,
+  FileText,
   Landmark,
-  ListFilter,
 } from "lucide-react";
 import { api, getToken } from "../api.js";
+import { Badge } from "../components/Badge.jsx";
 import { EmptyState, ErrorState, SkeletonTable } from "../components/Feedback.jsx";
 import { useToast } from "../components/Toast.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -59,7 +59,7 @@ export default function CashPage() {
 
   // Вкладка 1 — Зміни
   const [shiftFilterChip, setShiftFilterChip] = useState(initialChip);
-  const [shiftsData, setShiftsData] = useState({ items: [], unreviewed_count: 0 });
+  const [shiftsData, setShiftsData] = useState({ items: [], total: 0, unreviewed_count: 0 });
   const [shiftsPage, setShiftsPage] = useState(1);
 
   // Вкладка 2 — Денна каса
@@ -71,7 +71,8 @@ export default function CashPage() {
   const [opCatFilter, setOpCatFilter] = useState("");
   const [opsData, setOpsData] = useState({
     items: [],
-    summary: { cash_in_total: 0, cash_out_total: 0, safe_drop_total: 0 },
+    total: 0,
+    summary: { count: 0, cash_in: 0, cash_out: 0, collection: 0 },
   });
   const [opsPage, setOpsPage] = useState(1);
 
@@ -122,8 +123,8 @@ export default function CashPage() {
 
       if (activeTab === "shifts") {
         const sp = new URLSearchParams(baseParams);
-        if (shiftFilterChip === "unreviewed") sp.set("unreviewed_only", "true");
-        if (shiftFilterChip === "discrepancy") sp.set("with_discrepancy", "true");
+        if (shiftFilterChip === "unreviewed") sp.set("review_status", "очікує");
+        if (shiftFilterChip === "discrepancy") sp.set("with_difference", "true");
         if (shiftFilterChip === "forced") sp.set("force_closed", "true");
         const res = await api.get(`/shifts?${sp.toString()}`);
         setShiftsData(res);
@@ -158,8 +159,8 @@ export default function CashPage() {
       let filename = `shifts_${isoDate(new Date())}.csv`;
 
       if (activeTab === "shifts") {
-        if (shiftFilterChip === "unreviewed") params.set("unreviewed_only", "true");
-        if (shiftFilterChip === "discrepancy") params.set("with_discrepancy", "true");
+        if (shiftFilterChip === "unreviewed") params.set("review_status", "очікує");
+        if (shiftFilterChip === "discrepancy") params.set("with_difference", "true");
         if (shiftFilterChip === "forced") params.set("force_closed", "true");
       } else if (activeTab === "daily") {
         endpoint = "/cash/daily/export.csv";
@@ -202,6 +203,24 @@ export default function CashPage() {
     (currentShiftPage - 1) * PAGE_SIZE,
     currentShiftPage * PAGE_SIZE
   );
+  const remainingShiftPages = Math.max(0, totalShiftPages - currentShiftPage);
+
+  const shiftsSumRevenue = shiftsList.reduce(
+    (acc, s) => acc + Number(s.revenue_total || 0),
+    0
+  );
+  const shiftsSumCash = shiftsList.reduce(
+    (acc, s) => acc + Number(s.cash_sales || 0),
+    0
+  );
+  const shiftsSumCard = shiftsList.reduce(
+    (acc, s) => acc + Number(s.card_sales || 0),
+    0
+  );
+  const shiftsSumCollection = shiftsList.reduce(
+    (acc, s) => acc + Number(s.collection || 0),
+    0
+  );
 
   // Пагінація для вкладки «Операції»
   const opsList = opsData.items || [];
@@ -211,11 +230,12 @@ export default function CashPage() {
     (currentOpPage - 1) * PAGE_SIZE,
     currentOpPage * PAGE_SIZE
   );
+  const remainingOpPages = Math.max(0, totalOpPages - currentOpPage);
 
   return (
     <section className="page-section">
       <div className="page-header">
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div className="hall-title-row">
           <h1>Каса і Z-звіти</h1>
           {shiftsData.unreviewed_count > 0 && (
             <button
@@ -227,38 +247,165 @@ export default function CashPage() {
               }}
               title="Показати Z-звіти, що очікують перевірки бухгалтером"
             >
-              <AlertCircle size={13} style={{ marginRight: 4 }} />
-              Очікують перевірки: {shiftsData.unreviewed_count}
+              <AlertCircle size={13} />
+              <span>Очікують перевірки: {shiftsData.unreviewed_count}</span>
             </button>
           )}
         </div>
 
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={handleExportCsv}
-        >
-          <Download size={16} aria-hidden="true" />
-          <span>
-            {activeTab === "daily" ? "Експорт денної каси CSV" : "Експорт CSV"}
-          </span>
-        </button>
+        <div className="header-actions">
+          <div className="tabs-bar" role="tablist" aria-label="Підрозділи каси">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "shifts"}
+              className={`tab-btn ${activeTab === "shifts" ? "active" : ""}`}
+              onClick={() => setActiveTab("shifts")}
+            >
+              <Landmark size={15} aria-hidden="true" />
+              <span>Зміни та Z-звіти</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "daily"}
+              className={`tab-btn ${activeTab === "daily" ? "active" : ""}`}
+              onClick={() => setActiveTab("daily")}
+            >
+              <Calendar size={15} aria-hidden="true" />
+              <span>Денна каса</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "operations"}
+              className={`tab-btn ${activeTab === "operations" ? "active" : ""}`}
+              onClick={() => setActiveTab("operations")}
+            >
+              <FileSpreadsheet size={15} aria-hidden="true" />
+              <span>Операції</span>
+            </button>
+          </div>
+
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleExportCsv}
+          >
+            <Download size={16} aria-hidden="true" />
+            <span>
+              {activeTab === "daily" ? "Експорт денної каси CSV" : "Експорт CSV"}
+            </span>
+          </button>
+        </div>
       </div>
 
-      {/* Панель періоду */}
-      <div className="panel filter-bar" style={{ marginBottom: 14 }}>
+      {/* KPI картки відповідно до активної вкладки */}
+      {activeTab === "shifts" && (
+        <div className="kpi-grid">
+          <div className="panel kpi-card">
+            <span className="kpi-label">Виручка змін ({shiftsList.length} змін)</span>
+            <span className="kpi-value tabular-nums accent-text">
+              {formatMoney(shiftsSumRevenue)}
+            </span>
+          </div>
+          <div className="panel kpi-card">
+            <span className="kpi-label">Готівкові оплати</span>
+            <span className="kpi-value tabular-nums">{formatMoney(shiftsSumCash)}</span>
+          </div>
+          <div className="panel kpi-card">
+            <span className="kpi-label">Оплати карткою</span>
+            <span className="kpi-value tabular-nums">{formatMoney(shiftsSumCard)}</span>
+          </div>
+          <div className="panel kpi-card">
+            <span className="kpi-label">Інкасація в сейф</span>
+            <span className="kpi-value tabular-nums">{formatMoney(shiftsSumCollection)}</span>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "daily" && dailyData.summary && (
+        <div className="kpi-grid">
+          <div className="panel kpi-card">
+            <span className="kpi-label">
+              Виручка за період ({dailyData.summary.days_count} дн. / {dailyData.summary.shifts_count} змін)
+            </span>
+            <span className="kpi-value tabular-nums accent-text">
+              {formatMoney(dailyData.summary.revenue_total)}
+            </span>
+          </div>
+          <div className="panel kpi-card">
+            <span className="kpi-label">Готівкові оплати</span>
+            <span className="kpi-value tabular-nums">
+              {formatMoney(dailyData.summary.cash_sales)}
+            </span>
+          </div>
+          <div className="panel kpi-card">
+            <span className="kpi-label">Інкасація за період</span>
+            <span className="kpi-value tabular-nums">
+              {formatMoney(dailyData.summary.collection)}
+            </span>
+          </div>
+          <div className="panel kpi-card">
+            <span className="kpi-label">Сумарна різниця каси</span>
+            <span
+              className={`kpi-value tabular-nums ${
+                Number(dailyData.summary.cash_difference) === 0
+                  ? ""
+                  : Number(dailyData.summary.cash_difference) > 0
+                  ? "kpi-value-warning"
+                  : "kpi-value-negative"
+              }`}
+            >
+              {Number(dailyData.summary.cash_difference) > 0 ? "+" : ""}
+              {formatMoney(dailyData.summary.cash_difference)}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "operations" && (
+        <div className="kpi-grid">
+          <div className="panel kpi-card">
+            <span className="kpi-label">Усього операцій</span>
+            <span className="kpi-value tabular-nums">{opsData.summary?.count ?? 0}</span>
+          </div>
+          <div className="panel kpi-card">
+            <span className="kpi-label">Службові внесення (+)</span>
+            <span className="kpi-value tabular-nums kpi-value-positive">
+              +{formatMoney(opsData.summary?.cash_in)}
+            </span>
+          </div>
+          <div className="panel kpi-card">
+            <span className="kpi-label">Службові вилучення (−)</span>
+            <span className="kpi-value tabular-nums kpi-value-warning">
+              −{formatMoney(opsData.summary?.cash_out)}
+            </span>
+          </div>
+          <div className="panel kpi-card">
+            <span className="kpi-label">Інкасація (−)</span>
+            <span className="kpi-value tabular-nums text-info">
+              −{formatMoney(opsData.summary?.collection)}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Панель фільтрів */}
+      <div className="filters-bar">
         <div className="chip-group" role="group" aria-label="Період">
           {[
-            { id: "all", label: "Весь час" },
+            { id: "all", label: "Увесь час" },
             { id: "today", label: "Сьогодні" },
             { id: "yesterday", label: "Вчора" },
             { id: "7d", label: "7 днів" },
             { id: "month", label: "Місяць" },
+            { id: "custom", label: "Свій період" },
           ].map((p) => (
             <button
               key={p.id}
               type="button"
-              className={`chip ${periodPreset === p.id ? "active" : ""}`}
+              className={`filter-chip ${periodPreset === p.id ? "active" : ""}`}
               onClick={() => applyPreset(p.id)}
             >
               {p.label}
@@ -266,257 +413,237 @@ export default function CashPage() {
           ))}
         </div>
 
-        <div className="filter-dates">
-          <input
-            type="date"
-            aria-label="Дата від"
-            value={dateFrom}
-            onChange={(e) => {
-              setPeriodPreset("custom");
-              setDateFrom(e.target.value);
-            }}
-          />
-          <span className="muted">—</span>
-          <input
-            type="date"
-            aria-label="Дата до"
-            value={dateTo}
-            onChange={(e) => {
-              setPeriodPreset("custom");
-              setDateTo(e.target.value);
-            }}
-          />
-        </div>
-      </div>
-
-      {/* Три вкладки */}
-      <div className="tabs-bar" style={{ marginBottom: 14 }}>
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === "shifts" ? "active" : ""}`}
-          onClick={() => setActiveTab("shifts")}
-        >
-          <Landmark size={15} />
-          <span>Зміни та Z-звіти</span>
-        </button>
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === "daily" ? "active" : ""}`}
-          onClick={() => setActiveTab("daily")}
-        >
-          <Calendar size={15} />
-          <span>Денна каса</span>
-        </button>
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === "operations" ? "active" : ""}`}
-          onClick={() => setActiveTab("operations")}
-        >
-          <FileSpreadsheet size={15} />
-          <span>Операції</span>
-        </button>
-      </div>
-
-      {error ? (
-        <ErrorState message={error} onRetry={loadData} />
-      ) : loading ? (
-        <SkeletonTable rows={6} cols={8} />
-      ) : activeTab === "shifts" ? (
-        /* Вкладка 1 — Зміни */
-        <div className="panel">
-          <div className="filter-bar" style={{ marginBottom: 12 }}>
-            <div className="chip-group">
-              {[
-                { id: "all", label: "Усі" },
-                { id: "unreviewed", label: "Очікують перевірки" },
-                { id: "discrepancy", label: "З розбіжністю" },
-                { id: "forced", label: "Закрито примусово" },
-              ].map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  className={`chip ${shiftFilterChip === c.id ? "active" : ""}`}
-                  onClick={() => setShiftFilterChip(c.id)}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {shiftsList.length === 0 ? (
-            <EmptyState
-              title="Змін не знайдено"
-              description="Спробуйте змінити період або фільтр статусу."
+        {periodPreset === "custom" && (
+          <div className="field-inline">
+            <input
+              type="date"
+              className="select-compact"
+              aria-label="Дата від"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
             />
+            <span className="subtle-meta">—</span>
+            <input
+              type="date"
+              className="select-compact"
+              aria-label="Дата до"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </div>
+        )}
+
+        {activeTab === "shifts" && (
+          <div className="chip-group" role="group" aria-label="Фільтр змін">
+            {[
+              { id: "all", label: "Усі зміни" },
+              { id: "unreviewed", label: "Очікують перевірки" },
+              { id: "discrepancy", label: "З розбіжністю" },
+              { id: "forced", label: "Закрито примусово" },
+            ].map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className={`filter-chip ${shiftFilterChip === c.id ? "active" : ""}`}
+                onClick={() => setShiftFilterChip(c.id)}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {activeTab === "operations" && (
+          <div className="chip-group" role="group" aria-label="Фільтр типу операції">
+            {[
+              { id: "", label: "Усі типи" },
+              { id: "внесення", label: "Внесення" },
+              { id: "вилучення", label: "Вилучення" },
+              { id: "інкасація", label: "Інкасація" },
+            ].map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`filter-chip ${opTypeFilter === t.id ? "active" : ""}`}
+                onClick={() => setOpTypeFilter(t.id)}
+              >
+                {t.label}
+              </button>
+            ))}
+
+            <select
+              aria-label="Категорія операції"
+              className="select-compact"
+              value={opCatFilter}
+              onChange={(e) => setOpCatFilter(e.target.value)}
+            >
+              <option value="">Усі категорії</option>
+              <option value="господарські витрати">господарські витрати</option>
+              <option value="закупівля">закупівля</option>
+              <option value="виплата">виплата</option>
+              <option value="інше">інше</option>
+            </select>
+          </div>
+        )}
+      </div>
+
+      {/* Контент активної вкладки */}
+      <div className="panel table-wrap">
+        {loading ? (
+          <SkeletonTable columns={8} rows={6} />
+        ) : error ? (
+          <ErrorState message={error} onRetry={loadData} />
+        ) : activeTab === "shifts" ? (
+          /* Вкладка 1 — Зміни */
+          shiftsList.length === 0 ? (
+            <EmptyState text="За обраними фільтрами змін не знайдено." />
           ) : (
             <>
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Z-номер</th>
-                      <th>Клуб</th>
-                      <th>Дата зміни</th>
-                      <th>Відкрито</th>
-                      <th>Закрито</th>
-                      <th className="num">Виручка</th>
-                      <th className="num">Очікувалось</th>
-                      <th className="num">Фактично</th>
-                      <th className="num">Різниця</th>
-                      <th className="num">Інкасація</th>
-                      <th className="num">Залишок</th>
-                      <th>Статус</th>
-                      <th>Перевірено</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleShifts.map((s) => {
-                      const diff =
-                        s.cash_difference != null ? Number(s.cash_difference) : null;
-                      const totalSafeDrop =
-                        Number(s.safe_drop_total || 0) +
-                        Number(s.safe_drop_on_close || 0);
-                      return (
-                        <tr
-                          key={s.shift_id}
-                          className="clickable-row"
-                          onClick={() => navigate(`/cash/z/${s.shift_id}`)}
-                        >
-                          <td className="tabular-nums">
-                            <strong>
-                              {s.z_number
-                                ? `Z-${String(s.z_number).padStart(4, "0")}`
-                                : "— (відкрита)"}
-                            </strong>
-                          </td>
-                          <td>{s.club_name}</td>
-                          <td className="tabular-nums">{formatDate(s.business_date)}</td>
-                          <td>
-                            <div className="tabular-nums">{formatTime(s.opened_at)}</div>
-                            <div className="muted" style={{ fontSize: 11 }}>
-                              {s.opened_by_name}
-                            </div>
-                          </td>
-                          <td>
-                            {s.closed_at ? (
-                              <>
-                                <div className="tabular-nums">{formatTime(s.closed_at)}</div>
-                                <div className="muted" style={{ fontSize: 11 }}>
-                                  {s.closed_by_name}
-                                </div>
-                              </>
-                            ) : (
-                              <span className="muted">Триває</span>
-                            )}
-                          </td>
-                          <td className="num tabular-nums">
-                            {formatMoney(s.revenue_total)}
-                          </td>
-                          <td className="num tabular-nums">
-                            {formatMoney(s.expected_cash)}
-                          </td>
-                          <td className="num tabular-nums">
-                            {s.actual_cash != null ? formatMoney(s.actual_cash) : "—"}
-                          </td>
-                          <td className="num tabular-nums">
-                            {diff == null ? (
-                              "—"
-                            ) : diff === 0 ? (
-                              <span className="badge badge-success">0,00 ₴</span>
-                            ) : diff > 0 ? (
-                              <span className="badge badge-warning">
-                                +{formatMoney(diff)}
-                              </span>
-                            ) : (
-                              <span className="badge badge-danger">
-                                {formatMoney(diff)}
-                              </span>
-                            )}
-                          </td>
-                          <td className="num tabular-nums">
-                            {formatMoney(totalSafeDrop)}
-                          </td>
-                          <td className="num tabular-nums">
-                            {s.closing_cash != null ? formatMoney(s.closing_cash) : "—"}
-                          </td>
-                          <td>
-                            <span
-                              className={`badge ${
-                                s.status === "відкрита"
-                                  ? "badge-info"
-                                  : s.status === "закрита"
-                                  ? "badge-neutral"
-                                  : "badge-danger"
-                              }`}
-                            >
-                              {s.status === "закрита примусово" ? "примусово" : s.status}
-                            </span>
-                          </td>
-                          <td>
-                            {s.status === "відкрита" ? (
-                              <span className="muted">—</span>
-                            ) : s.reviewed_at ? (
-                              <span className="badge badge-success">✓ Підтверджено</span>
-                            ) : (
-                              <span className="badge badge-warning">Очікує</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {totalShiftPages > 1 && (
-                <div className="pagination-bar">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={currentShiftPage <= 1}
-                    onClick={() => setShiftsPage((p) => Math.max(1, p - 1))}
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <span className="pagination-info tabular-nums">
-                    Сторінка {currentShiftPage} з {totalShiftPages} ·{" "}
-                    {formatRemainingPages(totalShiftPages - currentShiftPage)}
-                  </span>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={currentShiftPage >= totalShiftPages}
-                    onClick={() =>
-                      setShiftsPage((p) => Math.min(totalShiftPages, p + 1))
-                    }
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      ) : activeTab === "daily" ? (
-        /* Вкладка 2 — Денна каса */
-        <div className="panel">
-          {(dailyData.items || []).length === 0 ? (
-            <EmptyState
-              title="Даних денної каси немає"
-              description="За вибраний період зміни не відкривалися."
-            />
-          ) : (
-            <div className="table-wrap">
-              <table className="data-table">
+              <table>
                 <thead>
                   <tr>
-                    <th style={{ width: 32 }} />
+                    <th>Z-номер</th>
+                    <th>Клуб</th>
+                    <th>Дата зміни</th>
+                    <th>Відкрито</th>
+                    <th>Закрито</th>
+                    <th className="num">Виручка</th>
+                    <th className="num">Очікувалось</th>
+                    <th className="num">Фактично</th>
+                    <th className="num">Різниця</th>
+                    <th className="num">Інкасація</th>
+                    <th className="num">Залишок</th>
+                    <th>Статус</th>
+                    <th>Перевірка</th>
+                    <th aria-label="Дії" className="actions-col" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleShifts.map((s) => {
+                    const isOpen = s.status === "відкрита";
+                    const diff = Number(s.cash_difference || 0);
+                    return (
+                      <tr
+                        key={s.shift_id}
+                        className="clickable-row"
+                        onClick={() => navigate(`/cash/z/${s.shift_id}`)}
+                      >
+                        <td className="tabular-nums font-medium">
+                          <Link
+                            to={`/cash/z/${s.shift_id}`}
+                            className="table-link font-medium"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {s.z_label}
+                          </Link>
+                        </td>
+                        <td>{s.club_name}</td>
+                        <td className="tabular-nums">{formatDate(s.business_date)}</td>
+                        <td>
+                          <span className="tabular-nums">{formatTime(s.opened_at)}</span>{" "}
+                          <span className="subtle-meta">· {s.opened_by_name}</span>
+                        </td>
+                        <td>
+                          {s.closed_at ? (
+                            <>
+                              <span className="tabular-nums">{formatTime(s.closed_at)}</span>{" "}
+                              <span className="subtle-meta">· {s.closed_by_name}</span>
+                            </>
+                          ) : (
+                            <span className="subtle-meta">Триває</span>
+                          )}
+                        </td>
+                        <td className="num tabular-nums font-medium">
+                          {formatMoney(s.revenue_total)}
+                        </td>
+                        <td className="num tabular-nums">
+                          {formatMoney(s.expected_cash)}
+                        </td>
+                        <td className="num tabular-nums">
+                          {isOpen ? "—" : formatMoney(s.actual_cash)}
+                        </td>
+                        <td className="num tabular-nums">
+                          {isOpen ? (
+                            "—"
+                          ) : diff === 0 ? (
+                            <Badge variant="success">0,00 ₴</Badge>
+                          ) : diff > 0 ? (
+                            <Badge variant="warning">+{formatMoney(diff)}</Badge>
+                          ) : (
+                            <Badge variant="danger">{formatMoney(diff)}</Badge>
+                          )}
+                        </td>
+                        <td className="num tabular-nums">{formatMoney(s.collection)}</td>
+                        <td className="num tabular-nums font-medium">
+                          {isOpen ? "—" : formatMoney(s.cash_left)}
+                        </td>
+                        <td>
+                          {isOpen ? (
+                            <Badge variant="info">відкрита</Badge>
+                          ) : s.force_closed ? (
+                            <Badge variant="danger">примусово</Badge>
+                          ) : (
+                            <Badge variant="neutral">закрита</Badge>
+                          )}
+                        </td>
+                        <td>
+                          {isOpen ? (
+                            <span className="subtle-meta">—</span>
+                          ) : s.review_status === "підтверджена" ? (
+                            <Badge variant="success">✓ Підтверджено</Badge>
+                          ) : (
+                            <Badge variant="warning">Очікує</Badge>
+                          )}
+                        </td>
+                        <td className="actions" onClick={(e) => e.stopPropagation()}>
+                          <Link
+                            to={`/cash/z/${s.shift_id}`}
+                            className="btn btn-secondary btn-sm"
+                          >
+                            <FileText size={14} aria-hidden="true" />
+                            <span>{isOpen ? "X-звіт" : "Z-звіт"}</span>
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              <div className="table-summary-bar tabular-nums">
+                <span>
+                  Змін: <strong>{shiftsList.length}</strong>
+                </span>
+                <span>
+                  Готівка: <strong>{formatMoney(shiftsSumCash)}</strong>
+                </span>
+                <span>
+                  Картка: <strong>{formatMoney(shiftsSumCard)}</strong>
+                </span>
+                <span>
+                  Інкасація: <strong>{formatMoney(shiftsSumCollection)}</strong>
+                </span>
+                <span>
+                  Виручка разом: <strong>{formatMoney(shiftsSumRevenue)}</strong>
+                </span>
+              </div>
+            </>
+          )
+        ) : activeTab === "daily" ? (
+          /* Вкладка 2 — Денна каса */
+          (dailyData.items || []).length === 0 ? (
+            <EmptyState text="За обраний період даних денної каси немає." />
+          ) : (
+            <>
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: 36 }} />
                     <th>Дата</th>
                     <th>Клуб</th>
                     <th className="num">Змін</th>
-                    <th className="num">На початок дня</th>
-                    <th className="num">Готівка (оплати)</th>
+                    <th className="num">Виручка</th>
+                    <th className="num">Готівка</th>
                     <th className="num">Картка</th>
                     <th className="num">Бонуси</th>
                     <th className="num">Внесення</th>
@@ -532,6 +659,15 @@ export default function CashPage() {
                     const rowKey = `${row.business_date}_${row.club_id}`;
                     const isExpanded = Boolean(expandedDays[rowKey]);
                     const diff = Number(row.cash_difference || 0);
+                    const allReviewed = (row.shifts || []).every(
+                      (sh) => sh.status !== "відкрита" && sh.review_status === "підтверджена"
+                    );
+                    const dayStatusLabel = row.has_open_shift
+                      ? "День не закрито"
+                      : allReviewed
+                      ? "Усі Z-звіти перевірено"
+                      : "Очікує перевірки";
+
                     return (
                       <Fragment key={rowKey}>
                         <tr
@@ -545,63 +681,59 @@ export default function CashPage() {
                               <ChevronDown size={15} />
                             )}
                           </td>
-                          <td className="tabular-nums">
-                            <strong>{formatDate(row.business_date)}</strong>
+                          <td className="tabular-nums font-medium">
+                            {formatDate(row.business_date)}
                           </td>
                           <td>{row.club_name}</td>
                           <td className="num tabular-nums">{row.shifts_count}</td>
-                          <td className="num tabular-nums">
-                            {formatMoney(row.opening_cash)}
+                          <td className="num tabular-nums font-medium">
+                            {formatMoney(row.revenue_total)}
                           </td>
                           <td className="num tabular-nums">
-                            {formatMoney(row.revenue_cash)}
+                            {formatMoney(row.cash_sales)}
                           </td>
                           <td className="num tabular-nums">
-                            {formatMoney(row.revenue_card)}
+                            {formatMoney(row.card_sales)}
                           </td>
                           <td className="num tabular-nums">
-                            {formatMoney(row.revenue_bonus)}
+                            {formatMoney(row.bonus_sales)}
                           </td>
-                          <td className="num tabular-nums text-success">
-                            +{formatMoney(row.cash_in_total)}
+                          <td className="num tabular-nums kpi-value-positive">
+                            +{formatMoney(row.cash_in)}
                           </td>
-                          <td className="num tabular-nums text-warning">
-                            −{formatMoney(row.cash_out_total)}
+                          <td className="num tabular-nums kpi-value-warning">
+                            −{formatMoney(row.cash_out)}
                           </td>
                           <td className="num tabular-nums text-info">
-                            −{formatMoney(row.safe_drop_total)}
+                            −{formatMoney(row.collection)}
                           </td>
                           <td
                             className={`num tabular-nums ${
                               diff === 0
                                 ? ""
                                 : diff > 0
-                                ? "text-warning"
-                                : "text-danger"
+                                ? "kpi-value-warning"
+                                : "kpi-value-negative"
                             }`}
                           >
                             {diff > 0 ? "+" : ""}
                             {formatMoney(diff)}
                           </td>
-                          <td className="num tabular-nums">
-                            <strong>
-                              {row.closing_cash != null
-                                ? formatMoney(row.closing_cash)
-                                : "—"}
-                            </strong>
+                          <td className="num tabular-nums font-medium">
+                            {formatMoney(row.cash_left_end_of_day)}
                           </td>
                           <td>
-                            <span
-                              className={`badge ${
-                                row.day_status === "Усі Z-звіти перевірено"
-                                  ? "badge-success"
-                                  : row.day_status === "День не закрито"
-                                  ? "badge-info"
-                                  : "badge-warning"
-                              }`}
+                            <Badge
+                              variant={
+                                row.has_open_shift
+                                  ? "info"
+                                  : allReviewed
+                                  ? "success"
+                                  : "warning"
+                              }
                             >
-                              {row.day_status}
-                            </span>
+                              {dayStatusLabel}
+                            </Badge>
                           </td>
                         </tr>
 
@@ -609,58 +741,45 @@ export default function CashPage() {
                           (row.shifts || []).map((sh) => (
                             <tr key={sh.shift_id} className="sub-row">
                               <td />
-                              <td colSpan={2} style={{ paddingLeft: 18 }}>
+                              <td colSpan={2}>
                                 <Link
                                   to={`/cash/z/${sh.shift_id}`}
-                                  className="link-inline"
+                                  className="table-link font-medium"
                                 >
-                                  {sh.z_number
-                                    ? `Z-${String(sh.z_number).padStart(4, "0")}`
-                                    : "Відкрита зміна"}{" "}
-                                  ({formatTime(sh.opened_at)} —{" "}
+                                  {sh.z_label} ({formatTime(sh.opened_at)} —{" "}
                                   {sh.closed_at ? formatTime(sh.closed_at) : "триває"})
                                 </Link>
                               </td>
-                              <td className="num muted">1</td>
+                              <td className="num subtle-meta">1</td>
                               <td className="num tabular-nums">
-                                {formatMoney(sh.opening_cash)}
+                                {formatMoney(sh.revenue_total)}
                               </td>
                               <td className="num tabular-nums">
-                                {formatMoney(sh.revenue_cash)}
+                                {formatMoney(sh.cash_sales)}
                               </td>
                               <td className="num tabular-nums">
-                                {formatMoney(sh.revenue_card)}
+                                {formatMoney(sh.card_sales)}
                               </td>
                               <td className="num tabular-nums">
-                                {formatMoney(sh.revenue_bonus)}
+                                {formatMoney(sh.bonus_sales)}
                               </td>
                               <td className="num tabular-nums">
-                                +{formatMoney(sh.cash_in_total)}
+                                +{formatMoney(sh.cash_in)}
                               </td>
                               <td className="num tabular-nums">
-                                −{formatMoney(sh.cash_out_total)}
+                                −{formatMoney(sh.cash_out)}
                               </td>
                               <td className="num tabular-nums">
-                                −
-                                {formatMoney(
-                                  Number(sh.safe_drop_total || 0) +
-                                    Number(sh.safe_drop_on_close || 0)
-                                )}
+                                −{formatMoney(sh.collection)}
                               </td>
                               <td className="num tabular-nums">
-                                {sh.cash_difference != null
-                                  ? formatMoney(sh.cash_difference)
-                                  : "—"}
+                                {formatMoney(sh.cash_difference)}
                               </td>
                               <td className="num tabular-nums">
-                                {sh.closing_cash != null
-                                  ? formatMoney(sh.closing_cash)
-                                  : "—"}
+                                {formatMoney(sh.cash_left)}
                               </td>
                               <td>
-                                <span className="muted" style={{ fontSize: 12 }}>
-                                  {sh.opened_by_name}
-                                </span>
+                                <span className="subtle-meta">{sh.opened_by_name}</span>
                               </td>
                             </tr>
                           ))}
@@ -668,203 +787,194 @@ export default function CashPage() {
                     );
                   })}
                 </tbody>
-
-                {dailyData.summary && (
-                  <tfoot>
-                    <tr className="table-summary-row">
-                      <td colSpan={3}>
-                        <strong>Разом за період</strong>
-                      </td>
-                      <td className="num tabular-nums">
-                        <strong>{dailyData.summary.shifts_count}</strong>
-                      </td>
-                      <td className="num">—</td>
-                      <td className="num tabular-nums">
-                        <strong>{formatMoney(dailyData.summary.revenue_cash)}</strong>
-                      </td>
-                      <td className="num tabular-nums">
-                        <strong>{formatMoney(dailyData.summary.revenue_card)}</strong>
-                      </td>
-                      <td className="num tabular-nums">
-                        <strong>{formatMoney(dailyData.summary.revenue_bonus)}</strong>
-                      </td>
-                      <td className="num tabular-nums text-success">
-                        <strong>+{formatMoney(dailyData.summary.cash_in_total)}</strong>
-                      </td>
-                      <td className="num tabular-nums text-warning">
-                        <strong>−{formatMoney(dailyData.summary.cash_out_total)}</strong>
-                      </td>
-                      <td className="num tabular-nums text-info">
-                        <strong>−{formatMoney(dailyData.summary.safe_drop_total)}</strong>
-                      </td>
-                      <td className="num tabular-nums">
-                        <strong>
-                          {formatMoney(dailyData.summary.cash_difference)}
-                        </strong>
-                      </td>
-                      <td colSpan={2} />
-                    </tr>
-                  </tfoot>
-                )}
               </table>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* Вкладка 3 — Операції */
-        <div className="panel">
-          <div className="filter-bar" style={{ marginBottom: 12 }}>
-            <div className="chip-group">
-              {[
-                { id: "", label: "Усі типи" },
-                { id: "внесення", label: "Внесення" },
-                { id: "вилучення", label: "Вилучення" },
-                { id: "інкасація", label: "Інкасація" },
-              ].map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  className={`chip ${opTypeFilter === t.id ? "active" : ""}`}
-                  onClick={() => setOpTypeFilter(t.id)}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
 
-            <select
-              aria-label="Категорія операції"
-              className="form-select"
-              style={{ maxWidth: 220 }}
-              value={opCatFilter}
-              onChange={(e) => setOpCatFilter(e.target.value)}
-            >
-              <option value="">Усі категорії</option>
-              <option value="господарські витрати">господарські витрати</option>
-              <option value="закупівля">закупівля</option>
-              <option value="виплата">виплата</option>
-              <option value="інше">інше</option>
-            </select>
-          </div>
-
-          {opsList.length === 0 ? (
-            <EmptyState
-              title="Службових операцій немає"
-              description="За вибраними фільтрами операцій не знайдено."
-            />
-          ) : (
-            <>
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Дата й час</th>
-                      <th>Клуб</th>
-                      <th>Зміна</th>
-                      <th>Тип</th>
-                      <th>Категорія</th>
-                      <th className="num">Сума</th>
-                      <th>Хто провів</th>
-                      <th>Коментар</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleOps.map((op) => (
-                      <tr key={op.operation_id}>
-                        <td className="tabular-nums">
-                          {formatDateTime(op.created_at)}
-                        </td>
-                        <td>{op.club_name}</td>
-                        <td>
-                          <Link
-                            to={`/cash/z/${op.shift_id}`}
-                            className="link-inline tabular-nums"
-                          >
-                            {op.z_number
-                              ? `Z-${String(op.z_number).padStart(4, "0")}`
-                              : `#${op.shift_id}`}
-                          </Link>
-                        </td>
-                        <td>
-                          <span
-                            className={`badge ${
-                              op.type === "внесення"
-                                ? "badge-success"
-                                : op.type === "вилучення"
-                                ? "badge-warning"
-                                : "badge-info"
-                            }`}
-                          >
-                            {op.type}
-                          </span>
-                        </td>
-                        <td>{op.category || "—"}</td>
-                        <td
-                          className={`num tabular-nums ${
-                            op.type === "внесення" ? "text-success" : "text-danger"
-                          }`}
-                        >
-                          {op.type === "внесення" ? "+" : "−"}
-                          {formatMoney(op.amount)}
-                        </td>
-                        <td>{op.staff_name}</td>
-                        <td>{op.comment}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="ops-summary-footer">
-                <span>
-                  Внесено:{" "}
-                  <strong className="tabular-nums text-success">
-                    +{formatMoney(opsData.summary?.cash_in_total)}
-                  </strong>
-                </span>
-                <span>·</span>
-                <span>
-                  Вилучено:{" "}
-                  <strong className="tabular-nums text-warning">
-                    −{formatMoney(opsData.summary?.cash_out_total)}
-                  </strong>
-                </span>
-                <span>·</span>
-                <span>
-                  Інкасовано:{" "}
-                  <strong className="tabular-nums text-info">
-                    −{formatMoney(opsData.summary?.safe_drop_total)}
-                  </strong>
-                </span>
-              </div>
-
-              {totalOpPages > 1 && (
-                <div className="pagination-bar">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={currentOpPage <= 1}
-                    onClick={() => setOpsPage((p) => Math.max(1, p - 1))}
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <span className="pagination-info tabular-nums">
-                    Сторінка {currentOpPage} з {totalOpPages} ·{" "}
-                    {formatRemainingPages(totalOpPages - currentOpPage)}
+              {dailyData.summary && (
+                <div className="table-summary-bar tabular-nums">
+                  <span>
+                    Днів: <strong>{dailyData.summary.days_count}</strong> (змін:{" "}
+                    <strong>{dailyData.summary.shifts_count}</strong>)
                   </span>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={currentOpPage >= totalOpPages}
-                    onClick={() => setOpsPage((p) => Math.min(totalOpPages, p + 1))}
-                  >
-                    <ChevronRight size={16} />
-                  </button>
+                  <span>
+                    Готівка: <strong>{formatMoney(dailyData.summary.cash_sales)}</strong>
+                  </span>
+                  <span>
+                    Картка: <strong>{formatMoney(dailyData.summary.card_sales)}</strong>
+                  </span>
+                  <span>
+                    Внесення: <strong>+{formatMoney(dailyData.summary.cash_in)}</strong>
+                  </span>
+                  <span>
+                    Вилучення: <strong>−{formatMoney(dailyData.summary.cash_out)}</strong>
+                  </span>
+                  <span>
+                    Інкасація: <strong>−{formatMoney(dailyData.summary.collection)}</strong>
+                  </span>
+                  <span>
+                    Разом виручка:{" "}
+                    <strong>{formatMoney(dailyData.summary.revenue_total)}</strong>
+                  </span>
                 </div>
               )}
             </>
-          )}
-        </div>
+          )
+        ) : /* Вкладка 3 — Операції */
+        opsList.length === 0 ? (
+          <EmptyState text="За обраними фільтрами службових операцій не знайдено." />
+        ) : (
+          <>
+            <table>
+              <thead>
+                <tr>
+                  <th>№</th>
+                  <th>Дата й час</th>
+                  <th>Клуб</th>
+                  <th>Зміна</th>
+                  <th>Тип</th>
+                  <th>Категорія</th>
+                  <th className="num">Сума</th>
+                  <th>Хто провів</th>
+                  <th>Коментар</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleOps.map((op) => (
+                  <tr key={op.operation_id}>
+                    <td className="tabular-nums font-medium">№ {op.operation_id}</td>
+                    <td className="tabular-nums">{formatDateTime(op.created_at)}</td>
+                    <td>{op.club_name}</td>
+                    <td>
+                      <Link
+                        to={`/cash/z/${op.shift_id}`}
+                        className="table-link font-medium tabular-nums"
+                      >
+                        {op.shift_label}
+                      </Link>
+                    </td>
+                    <td>
+                      <Badge
+                        variant={
+                          op.type === "внесення"
+                            ? "success"
+                            : op.type === "вилучення"
+                            ? "warning"
+                            : "info"
+                        }
+                      >
+                        {op.type}
+                      </Badge>
+                    </td>
+                    <td>{op.category || "—"}</td>
+                    <td
+                      className={`num tabular-nums font-medium ${
+                        op.type === "внесення"
+                          ? "kpi-value-positive"
+                          : "kpi-value-negative"
+                      }`}
+                    >
+                      {op.type === "внесення" ? "+" : "−"}
+                      {formatMoney(op.amount)}
+                    </td>
+                    <td>{op.created_by_name}</td>
+                    <td>{op.comment || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="table-summary-bar tabular-nums">
+              <span>
+                Операцій: <strong>{opsData.summary?.count ?? opsList.length}</strong>
+              </span>
+              <span>
+                Внесено:{" "}
+                <strong className="kpi-value-positive">
+                  +{formatMoney(opsData.summary?.cash_in)}
+                </strong>
+              </span>
+              <span>
+                Вилучено:{" "}
+                <strong className="kpi-value-warning">
+                  −{formatMoney(opsData.summary?.cash_out)}
+                </strong>
+              </span>
+              <span>
+                Інкасовано:{" "}
+                <strong className="text-info">
+                  −{formatMoney(opsData.summary?.collection)}
+                </strong>
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Пагінація для вкладки «Зміни» */}
+      {!loading && !error && activeTab === "shifts" && shiftsList.length > 0 && (
+        <nav className="pagination-bar" aria-label="Навігація сторінками змін">
+          <button
+            type="button"
+            className="pagination-arrow"
+            aria-label="Попередня сторінка"
+            disabled={currentShiftPage <= 1}
+            onClick={() => setShiftsPage((p) => Math.max(1, p - 1))}
+          >
+            <ChevronLeft size={18} aria-hidden="true" />
+          </button>
+          <div className="pagination-info tabular-nums">
+            <span className="pagination-page">
+              Сторінка <strong>{currentShiftPage}</strong> з{" "}
+              <strong>{totalShiftPages}</strong>
+            </span>
+            <span className="pagination-sep">·</span>
+            <span className="pagination-remaining">
+              {formatRemainingPages(remainingShiftPages)}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="pagination-arrow"
+            aria-label="Наступна сторінка"
+            disabled={currentShiftPage >= totalShiftPages}
+            onClick={() => setShiftsPage((p) => Math.min(totalShiftPages, p + 1))}
+          >
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+        </nav>
+      )}
+
+      {/* Пагінація для вкладки «Операції» */}
+      {!loading && !error && activeTab === "operations" && opsList.length > 0 && (
+        <nav className="pagination-bar" aria-label="Навігація сторінками операцій">
+          <button
+            type="button"
+            className="pagination-arrow"
+            aria-label="Попередня сторінка"
+            disabled={currentOpPage <= 1}
+            onClick={() => setOpsPage((p) => Math.max(1, p - 1))}
+          >
+            <ChevronLeft size={18} aria-hidden="true" />
+          </button>
+          <div className="pagination-info tabular-nums">
+            <span className="pagination-page">
+              Сторінка <strong>{currentOpPage}</strong> з{" "}
+              <strong>{totalOpPages}</strong>
+            </span>
+            <span className="pagination-sep">·</span>
+            <span className="pagination-remaining">
+              {formatRemainingPages(remainingOpPages)}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="pagination-arrow"
+            aria-label="Наступна сторінка"
+            disabled={currentOpPage >= totalOpPages}
+            onClick={() => setOpsPage((p) => Math.min(totalOpPages, p + 1))}
+          >
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+        </nav>
       )}
     </section>
   );

@@ -102,3 +102,4 @@ def downgrade() -> None:
     op.drop_table("cash_operation")
     op.drop_index("uq_shift_open_club", table_name="shift")
     op.drop_table("shift")
+

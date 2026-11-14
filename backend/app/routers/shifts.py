@@ -1149,3 +1149,4 @@ def export_daily_cash_csv(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="daily_cash.csv"'},
     )
+

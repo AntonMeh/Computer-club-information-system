@@ -339,10 +339,10 @@ export default function DashboardPage() {
                     Поточна зміна · {data.current_shift.club_name}
                   </span>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-                    <Badge variant={data.current_shift.shift_open ? "success" : "neutral"}>
-                      {data.current_shift.shift_open ? "Відкрита" : "Зміну не відкрито"}
+                    <Badge variant={data.current_shift.is_open ? "success" : "neutral"}>
+                      {data.current_shift.is_open ? "Відкрита" : "Зміну не відкрито"}
                     </Badge>
-                    {data.current_shift.shift_open && (
+                    {data.current_shift.is_open && data.current_shift.opened_at && (
                       <span className="subtle-meta">
                         з{" "}
                         {new Date(data.current_shift.opened_at).toLocaleTimeString("uk-UA", {
@@ -355,18 +355,20 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <Link to="/shift" className="btn btn-secondary btn-sm">
-                  {data.current_shift.shift_open ? "До зміни →" : "Відкрити зміну"}
+                  {data.current_shift.is_open ? "До зміни →" : "Відкрити зміну"}
                 </Link>
               </div>
-              {data.current_shift.shift_open && (
+              {data.current_shift.is_open && (
                 <div className="dashboard-shift-metrics">
                   <div>
                     <span className="subtle-meta">Виручка за зміну:</span>{" "}
-                    <strong className="num">{formatMoney(data.current_shift.revenue_total)}</strong>
+                    <strong className="tabular-nums">
+                      {formatMoney(data.current_shift.revenue_total)}
+                    </strong>
                   </div>
                   <div>
                     <span className="subtle-meta">Очікується в касі:</span>{" "}
-                    <strong className="num accent-text">
+                    <strong className="tabular-nums accent-text">
                       {formatMoney(data.current_shift.expected_cash)}
                     </strong>
                   </div>
@@ -396,16 +398,22 @@ export default function DashboardPage() {
               </div>
               <div className="dashboard-shift-metrics">
                 <div>
+                  <span className="subtle-meta">Виручка вчора:</span>{" "}
+                  <strong className="tabular-nums">
+                    {formatMoney(data.cash_yesterday.revenue_total)}
+                  </strong>
+                </div>
+                <div>
                   <span className="subtle-meta">Готівка вчора:</span>{" "}
-                  <strong className="num">{formatMoney(data.cash_yesterday.revenue_cash)}</strong>
+                  <strong className="tabular-nums">
+                    {formatMoney(data.cash_yesterday.cash_sales)}
+                  </strong>
                 </div>
                 <div>
-                  <span className="subtle-meta">Картка вчора:</span>{" "}
-                  <strong className="num">{formatMoney(data.cash_yesterday.revenue_card)}</strong>
-                </div>
-                <div>
-                  <span className="subtle-meta">Інкасація:</span>{" "}
-                  <strong className="num">{formatMoney(data.cash_yesterday.safe_drop_total)}</strong>
+                  <span className="subtle-meta">Різниця по касі:</span>{" "}
+                  <strong className="tabular-nums">
+                    {formatMoney(data.cash_yesterday.cash_difference)}
+                  </strong>
                 </div>
               </div>
             </div>
