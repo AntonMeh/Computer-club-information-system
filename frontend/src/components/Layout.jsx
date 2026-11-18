@@ -12,9 +12,11 @@ import {
   LogOut,
   Menu,
   Monitor,
+  Moon,
   PcCase,
   Receipt,
   ShieldCheck,
+  Sun,
   Tags,
   Trophy,
   User,
@@ -28,7 +30,7 @@ import { formatDateTime, formatTime } from "../format.js";
 
 export const NAV_GROUPS = [
   {
-    title: "робота",
+    title: "Робота",
     items: [
       { to: "/", section: "dashboard", label: "Огляд", icon: LayoutDashboard, end: true },
       { to: "/hall", section: "hall", label: "Зал", icon: Monitor },
@@ -37,7 +39,7 @@ export const NAV_GROUPS = [
     ],
   },
   {
-    title: "довідники",
+    title: "Довідники",
     items: [
       { to: "/clients", section: "clients", label: "Клієнти", icon: Users },
       { to: "/tariffs", section: "tariffs", label: "Тарифи", icon: Tags },
@@ -45,7 +47,7 @@ export const NAV_GROUPS = [
     ],
   },
   {
-    title: "фінанси",
+    title: "Фінанси",
     items: [
       { to: "/payments", section: "payments", label: "Оплати", icon: CreditCard },
       { to: "/expenses", section: "expenses", label: "Витрати", icon: Receipt },
@@ -54,11 +56,11 @@ export const NAV_GROUPS = [
     ],
   },
   {
-    title: "події",
+    title: "Події",
     items: [{ to: "/tournaments", section: "tournaments", label: "Турніри", icon: Trophy }],
   },
   {
-    title: "адміністрування",
+    title: "Адміністрування",
     items: [
       { to: "/clubs", section: "clubs", label: "Клуби", icon: Building2 },
       { to: "/staff", section: "staff", label: "Співробітники", icon: UserCog },
@@ -101,7 +103,16 @@ function resolveTitle(pathname) {
 }
 
 export default function Layout() {
-  const { user, can, logout, clubs, selectedClubId, setSelectedClubId } = useAuth();
+  const {
+    user,
+    can,
+    logout,
+    clubs,
+    selectedClubId,
+    setSelectedClubId,
+    theme,
+    toggleTheme,
+  } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -206,7 +217,10 @@ export default function Layout() {
       <aside className={`sidebar ${mobileNavOpen ? "open" : ""}`}>
         <div className="sidebar-top">
           <Link to="/" className="brand">
-            Клубна система
+            <span className="brand-mark" aria-hidden="true">
+              <Monitor size={15} />
+            </span>
+            <span>Клубна система</span>
           </Link>
           <button
             type="button"
@@ -321,6 +335,16 @@ export default function Layout() {
               {formatDateTime(now)}
             </time>
 
+            <button
+              type="button"
+              className="theme-toggle-btn"
+              onClick={toggleTheme}
+              aria-label={theme === "dark" ? "Увімкнути світлу тему" : "Увімкнути темну тему"}
+              title={theme === "dark" ? "Світла тема" : "Темна тема"}
+            >
+              {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+
             <div className="user-menu" ref={menuRef}>
               <button
                 type="button"
@@ -342,6 +366,24 @@ export default function Layout() {
                     <User size={16} aria-hidden="true" />
                     <span>Профіль</span>
                   </Link>
+                  <button
+                    type="button"
+                    className="user-dropdown-item"
+                    role="menuitem"
+                    onClick={toggleTheme}
+                  >
+                    {theme === "dark" ? (
+                      <>
+                        <Sun size={16} aria-hidden="true" />
+                        <span>Світла тема</span>
+                      </>
+                    ) : (
+                      <>
+                        <Moon size={16} aria-hidden="true" />
+                        <span>Темна тема</span>
+                      </>
+                    )}
+                  </button>
                   <button
                     type="button"
                     className="user-dropdown-item danger"

@@ -388,33 +388,44 @@ function FinanceTabContent({ data }) {
         {series.length === 0 ? (
           <EmptyState message="Немає даних для побудови графіка за цей період." />
         ) : (
-          <div className="dual-bar-chart-scroll">
-            <div className="dual-bar-chart">
-              {series.map((b) => {
-                const rev = Number(b.revenue || 0);
-                const exp = Number(b.expenses || 0);
-                const revPct = rev > 0 ? Math.max(4, Math.round((rev / maxVal) * 100)) : 2;
-                const expPct = exp > 0 ? Math.max(4, Math.round((exp / maxVal) * 100)) : 2;
-                return (
-                  <div
-                    key={b.period_key}
-                    className="dual-bar-group"
-                    title={`${b.period_label}\nВиручка: ${formatMoney(rev)}\nВитрати: ${formatMoney(exp)}\nПрибуток: ${formatMoney(b.profit)}`}
-                  >
-                    <div className="dual-bar-pair">
-                      <div
-                        className={`dual-bar revenue ${rev === 0 ? "zero" : ""}`}
-                        style={{ height: `${revPct}%` }}
-                      />
-                      <div
-                        className={`dual-bar expense ${exp === 0 ? "zero" : ""}`}
-                        style={{ height: `${expPct}%` }}
-                      />
+          <div className="chart-canvas-wrap">
+            <div className="chart-grid-lines" aria-hidden="true">
+              {[1, 0.75, 0.5, 0.25, 0].map((ratio) => (
+                <div key={ratio} className="chart-grid-line">
+                  <span className="chart-axis-label tabular-nums">
+                    {Math.round(maxVal * ratio)} ₴
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="dual-bar-chart-scroll">
+              <div className="dual-bar-chart">
+                {series.map((b) => {
+                  const rev = Number(b.revenue || 0);
+                  const exp = Number(b.expenses || 0);
+                  const revPct = rev > 0 ? Math.max(4, Math.round((rev / maxVal) * 100)) : 2;
+                  const expPct = exp > 0 ? Math.max(4, Math.round((exp / maxVal) * 100)) : 2;
+                  return (
+                    <div
+                      key={b.period_key}
+                      className="dual-bar-group"
+                      title={`${b.period_label}\nВиручка: ${formatMoney(rev)}\nВитрати: ${formatMoney(exp)}\nПрибуток: ${formatMoney(b.profit)}`}
+                    >
+                      <div className="dual-bar-pair">
+                        <div
+                          className={`dual-bar revenue ${rev === 0 ? "zero" : ""}`}
+                          style={{ height: `${revPct}%` }}
+                        />
+                        <div
+                          className={`dual-bar expense ${exp === 0 ? "zero" : ""}`}
+                          style={{ height: `${expPct}%` }}
+                        />
+                      </div>
+                      <div className="dual-bar-label num">{b.period_label}</div>
                     </div>
-                    <div className="dual-bar-label num">{b.period_label}</div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -443,43 +454,37 @@ function FinanceTabContent({ data }) {
               <tr className="pnl-group-row">
                 <td colSpan={3}>1. Виручка від ігрових сеансів</td>
               </tr>
-              <tr>
-                <td className="pnl-indent">Готівка</td>
-                <td className="num">{formatMoney(data.revenue_cash)}</td>
-                <td className="num">
-                  {Number(data.revenue_total) > 0
-                    ? `${((Number(data.revenue_cash) / Number(data.revenue_total)) * 100)
-                        .toFixed(1)
-                        .replace(".", ",")}%`
-                    : "0,0%"}
-                </td>
-              </tr>
-              <tr>
-                <td className="pnl-indent">Банківська картка</td>
-                <td className="num">{formatMoney(data.revenue_card)}</td>
-                <td className="num">
-                  {Number(data.revenue_total) > 0
-                    ? `${((Number(data.revenue_card) / Number(data.revenue_total)) * 100)
-                        .toFixed(1)
-                        .replace(".", ",")}%`
-                    : "0,0%"}
-                </td>
-              </tr>
-              <tr>
-                <td className="pnl-indent">Оплата бонусами</td>
-                <td className="num">{formatMoney(data.revenue_bonus)}</td>
-                <td className="num">
-                  {Number(data.revenue_total) > 0
-                    ? `${((Number(data.revenue_bonus) / Number(data.revenue_total)) * 100)
-                        .toFixed(1)
-                        .replace(".", ",")}%`
-                    : "0,0%"}
-                </td>
-              </tr>
+              {[
+                { label: "Готівка", val: Number(data.revenue_cash || 0) },
+                { label: "Банківська картка", val: Number(data.revenue_card || 0) },
+                { label: "Оплата бонусами", val: Number(data.revenue_bonus || 0) },
+              ].map((item) => {
+                const revTotal = Number(data.revenue_total || 0);
+                const pct = revTotal > 0 ? (item.val / revTotal) * 100 : 0;
+                return (
+                  <tr key={item.label}>
+                    <td className="pnl-indent">{item.label}</td>
+                    <td className="num tabular-nums">{formatMoney(item.val)}</td>
+                    <td className="num">
+                      <div className="inline-progress-cell">
+                        <div className="inline-progress-track">
+                          <div
+                            className="inline-progress-fill"
+                            style={{ width: `${Math.min(100, pct)}%` }}
+                          />
+                        </div>
+                        <span className="tabular-nums">
+                          {pct.toFixed(1).replace(".", ",")}%
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
               <tr className="pnl-subtotal-row">
                 <td>Усього виручка</td>
-                <td className="num">{formatMoney(data.revenue_total)}</td>
-                <td className="num">100,0%</td>
+                <td className="num tabular-nums">{formatMoney(data.revenue_total)}</td>
+                <td className="num tabular-nums">100,0%</td>
               </tr>
 
               <tr className="pnl-group-row">
@@ -488,22 +493,31 @@ function FinanceTabContent({ data }) {
               {Object.entries(EXPENSE_LABELS).map(([catKey, label]) => {
                 const amt = Number(data.expenses_by_category?.[catKey] || 0);
                 const expTotal = Number(data.expenses_total || 0);
+                const pct = expTotal > 0 ? (amt / expTotal) * 100 : 0;
                 return (
                   <tr key={catKey}>
                     <td className="pnl-indent">{label}</td>
-                    <td className="num">{formatMoney(amt)}</td>
+                    <td className="num tabular-nums">{formatMoney(amt)}</td>
                     <td className="num">
-                      {expTotal > 0
-                        ? `${((amt / expTotal) * 100).toFixed(1).replace(".", ",")}%`
-                        : "0,0%"}
+                      <div className="inline-progress-cell">
+                        <div className="inline-progress-track">
+                          <div
+                            className="inline-progress-fill expense-fill"
+                            style={{ width: `${Math.min(100, pct)}%` }}
+                          />
+                        </div>
+                        <span className="tabular-nums">
+                          {pct.toFixed(1).replace(".", ",")}%
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 );
               })}
               <tr className="pnl-subtotal-row">
                 <td>Усього витрати</td>
-                <td className="num">{formatMoney(data.expenses_total)}</td>
-                <td className="num">100,0%</td>
+                <td className="num tabular-nums">{formatMoney(data.expenses_total)}</td>
+                <td className="num tabular-nums">100,0%</td>
               </tr>
 
               <tr className="pnl-total-row">
@@ -623,6 +637,13 @@ function OccupancyTabContent({ data }) {
               Наведіть курсор на комірку, щоб побачити середній відсоток зайнятості за годину
             </p>
           </div>
+          <div className="heatmap-legend tabular-nums">
+            <span className="subtle-meta">Шкала:</span>
+            <span className="heatmap-legend-step lvl-0">0%</span>
+            <span className="heatmap-legend-step lvl-1">25%</span>
+            <span className="heatmap-legend-step lvl-2">50%</span>
+            <span className="heatmap-legend-step lvl-3">75%+</span>
+          </div>
         </div>
 
         <div className="heatmap-scroll">
@@ -645,18 +666,18 @@ function OccupancyTabContent({ data }) {
                     <td className="heatmap-day-label font-medium">{dayLabel}</td>
                     {HOURS_24.map((h) => {
                       const pct = Number(row[h] ?? 0);
-                      const alpha =
-                        pct <= 0 ? 0 : Math.min(0.92, 0.14 + (pct / 100) * 0.78);
-                      const bg =
+                      const levelClass =
                         pct <= 0
-                          ? "#f4f6f9"
-                          : `rgba(15, 118, 110, ${alpha.toFixed(2)})`;
-                      const textColor = pct >= 55 ? "#ffffff" : "#1b2230";
+                          ? "lvl-0"
+                          : pct < 35
+                          ? "lvl-1"
+                          : pct < 65
+                          ? "lvl-2"
+                          : "lvl-3";
                       return (
                         <td
                           key={h}
-                          className="heatmap-cell num"
-                          style={{ background: bg, color: textColor }}
+                          className={`heatmap-cell num ${levelClass}`}
                           title={`${dayLabel}, ${String(h).padStart(2, "0")}:00–${String(
                             (h + 1) % 24
                           ).padStart(2, "0")}:00 — ${pct.toFixed(1).replace(".", ",")}%`}
@@ -1096,8 +1117,12 @@ function TournamentsTabContent({ data }) {
                     <td className="num font-medium">{formatMoney(t.prize_fund)}</td>
                     <td>
                       {t.winner_name ? (
-                        <span className="font-medium accent-text">
-                          🏆 {t.winner_name}
+                        <span
+                          className="font-medium accent-text"
+                          style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                        >
+                          <Trophy size={14} aria-hidden="true" />
+                          <span>{t.winner_name}</span>
                         </span>
                       ) : (
                         <span className="subtle-meta">—</span>

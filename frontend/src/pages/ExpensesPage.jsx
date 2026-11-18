@@ -81,6 +81,7 @@ export default function ExpensesPage() {
 
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [hoveredCategory, setHoveredCategory] = useState(null);
 
   const defaultClubId = selectedClubId || clubs[0]?.club_id || "";
 
@@ -254,6 +255,32 @@ export default function ExpensesPage() {
   );
   const remainingPages = Math.max(0, totalPages - currentPage);
 
+  const avgExpense =
+    summary.count > 0 ? Number(summary.total || 0) / Number(summary.count) : 0;
+
+  // Розрахунок сегментів для SVG Donut-діаграми
+  const donutRadius = 60;
+  const donutCircumference = 2 * Math.PI * donutRadius;
+  let cumulativeOffset = 0;
+  const donutSegments = (summary.by_category || [])
+    .filter((c) => Number(c.amount) > 0)
+    .map((c) => {
+      const share = Math.max(0, Number(c.share_percent) / 100);
+      const length = share * donutCircumference;
+      const seg = {
+        ...c,
+        strokeDasharray: `${length} ${donutCircumference - length}`,
+        strokeDashoffset: -cumulativeOffset,
+        color: CATEGORY_COLORS[c.category] || "#475467",
+      };
+      cumulativeOffset += length;
+      return seg;
+    });
+
+  const activeHoverCat = hoveredCategory
+    ? (summary.by_category || []).find((c) => c.category === hoveredCategory)
+    : null;
+
   return (
     <section className="page-section">
       <div className="page-header">
@@ -277,53 +304,170 @@ export default function ExpensesPage() {
         </div>
       </div>
 
-      {/* 2 картки KPI + горизонтальна смуга-розподіл за категоріями */}
-      <div className="expenses-top-grid">
+      {/* 4 картки KPI */}
+      <div className="kpi-grid">
         <div className="panel kpi-card">
-          <span className="kpi-label">Витрати за період ({summary.count} записів)</span>
+          <span className="kpi-label">Витрати за період</span>
           <span className="kpi-value tabular-nums">{formatMoney(summary.total)}</span>
+          <span className="kpi-subtext tabular-nums">
+            Усього записів: {summary.count}
+          </span>
         </div>
 
         <div className="panel kpi-card">
-          <span className="kpi-label">Найбільша категорія</span>
+          <span className="kpi-label">Найбільша стаття</span>
           <span className="kpi-value tabular-nums">
-            {summary.top_category
-              ? `${summary.top_category} — ${formatMoney(summary.top_category_amount)}`
-              : "—"}
+            {summary.top_category ? summary.top_category : "—"}
           </span>
+          <span className="kpi-subtext tabular-nums">
+            {summary.top_category
+              ? formatMoney(summary.top_category_amount)
+              : "Витрат немає"}
+          </span>
+        </div>
+
+        <div className="panel kpi-card">
+          <span className="kpi-label">Середня сума запису</span>
+          <span className="kpi-value tabular-nums">{formatMoney(avgExpense)}</span>
+          <span className="kpi-subtext">На одну операцію витрат</span>
+        </div>
+
+        <div className="panel kpi-card">
+          <span className="kpi-label">Активних категорій</span>
+          <span className="kpi-value tabular-nums">
+            {donutSegments.length} із {EXPENSE_CATEGORIES.length}
+          </span>
+          <span className="kpi-subtext">За обраний період</span>
         </div>
       </div>
 
       {Number(summary.total) > 0 && (
-        <div className="panel expense-breakdown-panel">
-          <div className="expense-bar" role="img" aria-label="Розподіл витрат за категоріями">
-            {summary.by_category
-              .filter((c) => Number(c.amount) > 0)
-              .map((c) => (
-                <div
-                  key={c.category}
-                  className="expense-bar-segment"
-                  style={{
-                    width: `${Math.max(Number(c.share_percent), 2)}%`,
-                    backgroundColor: CATEGORY_COLORS[c.category] || "#475467",
-                  }}
-                  title={`${c.category}: ${formatMoney(c.amount)} (${c.share_percent} %)`}
-                />
-              ))}
+        <div className="panel expense-analytics-panel">
+          <div className="dashboard-panel-header">
+            <div>
+              <h2 className="section-title" style={{ marginBottom: 2 }}>
+                Структура операційних витрат за статтями
+              </h2>
+              <p className="subtle-meta">
+                Натисніть на категорію у списку праворуч, щоб відфільтрувати таблицю
+              </p>
+            </div>
+            {categoryFilter && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setCategoryFilter("")}
+              >
+                Скинути фільтр ({categoryFilter})
+              </button>
+            )}
           </div>
 
-          <div className="expense-legend">
-            {summary.by_category.map((c) => (
-              <div key={c.category} className="expense-legend-item tabular-nums">
-                <span
-                  className="expense-legend-dot"
-                  style={{ backgroundColor: CATEGORY_COLORS[c.category] || "#475467" }}
+          <div className="expense-analytics-grid">
+            {/* SVG Кільцева діаграма (Donut Chart) */}
+            <div className="expense-donut-wrap">
+              <svg
+                className="expense-donut-svg"
+                viewBox="0 0 160 160"
+                role="img"
+                aria-label="Кільцева діаграма витрат за категоріями"
+              >
+                <circle
+                  cx="80"
+                  cy="80"
+                  r={donutRadius}
+                  fill="none"
+                  stroke="var(--paper)"
+                  strokeWidth="18"
                 />
-                <span className="font-medium">{c.category}:</span>
-                <span>{formatMoney(c.amount)}</span>
-                <span className="subtle-meta">({c.share_percent} %)</span>
+                {donutSegments.map((seg) => {
+                  const isHovered = hoveredCategory === seg.category;
+                  return (
+                    <circle
+                      key={seg.category}
+                      cx="80"
+                      cy="80"
+                      r={donutRadius}
+                      fill="none"
+                      stroke={seg.color}
+                      strokeWidth={isHovered ? "22" : "18"}
+                      strokeDasharray={seg.strokeDasharray}
+                      strokeDashoffset={seg.strokeDashoffset}
+                      transform="rotate(-90 80 80)"
+                      className="expense-donut-segment"
+                      onMouseEnter={() => setHoveredCategory(seg.category)}
+                      onMouseLeave={() => setHoveredCategory(null)}
+                      onClick={() =>
+                        setCategoryFilter(
+                          categoryFilter === seg.category ? "" : seg.category
+                        )
+                      }
+                    />
+                  );
+                })}
+              </svg>
+              <div className="expense-donut-center">
+                <span className="expense-donut-label">
+                  {activeHoverCat ? activeHoverCat.category : "Усього"}
+                </span>
+                <span className="expense-donut-total tabular-nums">
+                  {formatMoney(
+                    activeHoverCat ? activeHoverCat.amount : summary.total
+                  )}
+                </span>
+                {activeHoverCat && (
+                  <span className="expense-donut-pct tabular-nums">
+                    {activeHoverCat.share_percent} %
+                  </span>
+                )}
               </div>
-            ))}
+            </div>
+
+            {/* Горизонтальний рейтинг категорій із прогрес-барами */}
+            <div className="expense-bars-list">
+              {[...summary.by_category]
+                .sort((a, b) => Number(b.amount) - Number(a.amount))
+                .map((c) => {
+                  const pct = Number(c.share_percent || 0);
+                  const isSelected = categoryFilter === c.category;
+                  const color = CATEGORY_COLORS[c.category] || "#475467";
+                  return (
+                    <button
+                      key={c.category}
+                      type="button"
+                      className={`expense-cat-row ${isSelected ? "selected" : ""}`}
+                      onMouseEnter={() => setHoveredCategory(c.category)}
+                      onMouseLeave={() => setHoveredCategory(null)}
+                      onClick={() =>
+                        setCategoryFilter(isSelected ? "" : c.category)
+                      }
+                    >
+                      <div className="expense-cat-top">
+                        <div className="expense-cat-title">
+                          <span
+                            className="expense-legend-dot"
+                            style={{ backgroundColor: color }}
+                          />
+                          <span className="font-medium">{c.category}</span>
+                        </div>
+                        <div className="expense-cat-values tabular-nums">
+                          <span className="font-medium">{formatMoney(c.amount)}</span>
+                          <span className="expense-cat-pct">{pct} %</span>
+                        </div>
+                      </div>
+                      <div className="expense-cat-track">
+                        <div
+                          className="expense-cat-fill"
+                          style={{
+                            width: `${pct > 0 ? Math.max(pct, 2) : 0}%`,
+                            backgroundColor: color,
+                          }}
+                        />
+                      </div>
+                    </button>
+                  );
+                })}
+            </div>
           </div>
         </div>
       )}

@@ -1,13 +1,21 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogOut, Shield } from "lucide-react";
+import { LogOut, Moon, Shield, Sun } from "lucide-react";
 import { api } from "../api.js";
 import { Badge } from "../components/Badge.jsx";
 import { useToast } from "../components/Toast.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
 export default function ProfilePage() {
-  const { user, logout, refreshUser, compactTables, setCompactTables } = useAuth();
+  const {
+    user,
+    logout,
+    refreshUser,
+    compactTables,
+    setCompactTables,
+    theme,
+    setTheme,
+  } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -99,14 +107,38 @@ export default function ProfilePage() {
           <hr className="divider" />
 
           <h3 className="subsection-title">Налаштування відображення</h3>
-          <label className="switch-row">
-            <input
-              type="checkbox"
-              checked={compactTables}
-              onChange={(e) => setCompactTables(e.target.checked)}
-            />
-            <span>Компактні таблиці (висота рядка 36 px)</span>
-          </label>
+          <div className="stack-form">
+            <div className="field">
+              <span className="field-label">Тема інтерфейсу</span>
+              <div className="tabs-bar" role="group" aria-label="Вибір теми інтерфейсу">
+                <button
+                  type="button"
+                  className={`tab-btn ${theme === "light" ? "active" : ""}`}
+                  onClick={() => setTheme("light")}
+                >
+                  <Sun size={14} aria-hidden="true" />
+                  <span>Світла тема</span>
+                </button>
+                <button
+                  type="button"
+                  className={`tab-btn ${theme === "dark" ? "active" : ""}`}
+                  onClick={() => setTheme("dark")}
+                >
+                  <Moon size={14} aria-hidden="true" />
+                  <span>Темна тема</span>
+                </button>
+              </div>
+            </div>
+
+            <label className="switch-row">
+              <input
+                type="checkbox"
+                checked={compactTables}
+                onChange={(e) => setCompactTables(e.target.checked)}
+              />
+              <span>Компактні таблиці (висота рядка 36 px)</span>
+            </label>
+          </div>
         </div>
 
         <div className="panel">

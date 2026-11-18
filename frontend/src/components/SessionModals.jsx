@@ -54,7 +54,7 @@ export function StartSessionDrawer({
   const [clients, setClients] = useState([]);
   const [selectedClientId, setSelectedClientId] = useState("");
   const [newClientName, setNewClientName] = useState("");
-  const [newClientPhone, setNewClientPhone] = useState("");
+  const [newClientPhone, setNewClientPhone] = useState("+380");
 
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -75,12 +75,13 @@ export function StartSessionDrawer({
     return tariffs.filter((t) => t.workstation_type === selectedWs.type);
   }, [tariffs, selectedWs]);
 
+  // Скидаємо форму лише в момент відкриття панелі або зміни пресету місця/клієнта
   useEffect(() => {
     if (!open) return;
     setError("");
     setIsNewClient(false);
     setNewClientName("");
-    setNewClientPhone("");
+    setNewClientPhone("+380");
 
     const initialWsId =
       presetWorkstation?.workstation_id || freeWorkstations[0]?.workstation_id || "";
@@ -93,7 +94,16 @@ export function StartSessionDrawer({
       setSelectedClientId("");
       setClientSearch("");
     }
-  }, [open, presetWorkstation, presetClient, freeWorkstations]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, presetWorkstation?.workstation_id, presetClient?.client_id]);
+
+  // Якщо список вільних місць завантажився пізніше і місце ще не обрано — підставляємо перше
+  useEffect(() => {
+    if (!open || workstationId || presetWorkstation) return;
+    if (freeWorkstations.length > 0) {
+      setWorkstationId(String(freeWorkstations[0].workstation_id));
+    }
+  }, [open, workstationId, presetWorkstation, freeWorkstations]);
 
   // Автопідстановка тарифу за типом обраного місця
   useEffect(() => {
@@ -221,7 +231,13 @@ export function StartSessionDrawer({
               type="button"
               className="link-action"
               onClick={() => {
-                setIsNewClient((v) => !v);
+                setIsNewClient((v) => {
+                  const next = !v;
+                  if (next && !newClientPhone.trim()) {
+                    setNewClientPhone("+380");
+                  }
+                  return next;
+                });
                 setError("");
               }}
             >
@@ -381,7 +397,7 @@ export function FinishSessionModal({ open, session, onClose, onFinished }) {
     setNowMs(Date.now());
     const id = setInterval(() => setNowMs(Date.now()), 5000);
     return () => clearInterval(id);
-  }, [open, session]);
+  }, [open, session?.session_id]);
 
   useEffect(() => {
     if (!open) return;

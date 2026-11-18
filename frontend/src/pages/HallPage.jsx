@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   CheckCircle2,
@@ -242,7 +242,10 @@ export default function HallPage() {
   const items = hallData?.items || [];
   const summary = hallData?.summary || { total: 0, free: 0, busy: 0, repair: 0 };
   const isShiftOpen = hallData ? Boolean(hallData.shift_open) : true;
-  const freeWorkstations = items.filter((w) => w.status === "вільне");
+  const freeWorkstations = useMemo(
+    () => (hallData?.items || []).filter((w) => w.status === "вільне"),
+    [hallData]
+  );
   const activeSpecs = specWs ? WORKSTATION_SPECS[specWs.type] || WORKSTATION_SPECS.Standard : null;
 
   return (

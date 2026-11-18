@@ -18,7 +18,7 @@ const CLIENT_FILTERS = [
   { key: "inactive_30d", label: "Без візитів понад 30 днів" },
 ];
 
-const BLANK = { full_name: "", phone: "", email: "" };
+const BLANK = { full_name: "", phone: "+380", email: "" };
 
 function formatRemainingPages(remaining) {
   if (remaining <= 0) return "остання сторінка";
@@ -115,7 +115,11 @@ export default function ClientsPage() {
     ? form.full_name !== editingClient.full_name ||
       form.phone !== editingClient.phone ||
       (form.email || "") !== (editingClient.email || "")
-    : Boolean(form.full_name.trim() || form.phone.trim() || form.email.trim());
+    : Boolean(
+        form.full_name.trim() ||
+          (form.phone.trim() && form.phone.trim() !== "+380") ||
+          form.email.trim()
+      );
 
   const handleSubmit = async (e) => {
     e.preventDefault();

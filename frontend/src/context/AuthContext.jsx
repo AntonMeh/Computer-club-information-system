@@ -5,6 +5,7 @@ const AuthContext = createContext(null);
 
 const CLUB_STORAGE_KEY = "club_selected_id";
 const COMPACT_STORAGE_KEY = "club_compact_tables";
+const THEME_STORAGE_KEY = "club_theme";
 
 const SATISFIES = {
   view: new Set(["view", "repair", "full"]),
@@ -32,6 +33,14 @@ export function AuthProvider({ children }) {
       return localStorage.getItem(COMPACT_STORAGE_KEY) === "true";
     } catch {
       return false;
+    }
+  });
+  const [theme, setThemeState] = useState(() => {
+    try {
+      const saved = localStorage.getItem(THEME_STORAGE_KEY);
+      return saved === "dark" ? "dark" : "light";
+    } catch {
+      return "light";
     }
   });
 
@@ -176,6 +185,33 @@ export function AuthProvider({ children }) {
     document.body.classList.toggle("compact-tables", compactTables);
   }, [compactTables]);
 
+  const setTheme = useCallback((nextTheme) => {
+    const resolved = nextTheme === "dark" ? "dark" : "light";
+    setThemeState(resolved);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, resolved);
+    } catch {
+      /* ігноруємо помилки localStorage */
+    }
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setThemeState((prev) => {
+      const next = prev === "dark" ? "light" : "dark";
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, next);
+      } catch {
+        /* ігноруємо помилки localStorage */
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    document.body.classList.toggle("dark-theme", theme === "dark");
+  }, [theme]);
+
   const can = useCallback(
     (section, required = "view") => {
       if (!user?.permissions) return false;
@@ -202,6 +238,9 @@ export function AuthProvider({ children }) {
       setSelectedClubId,
       compactTables,
       setCompactTables,
+      theme,
+      setTheme,
+      toggleTheme,
     }),
     [
       user,
@@ -216,6 +255,9 @@ export function AuthProvider({ children }) {
       setSelectedClubId,
       compactTables,
       setCompactTables,
+      theme,
+      setTheme,
+      toggleTheme,
     ]
   );
 

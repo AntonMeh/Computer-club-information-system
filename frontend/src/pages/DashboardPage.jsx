@@ -429,9 +429,15 @@ export default function DashboardPage() {
               <h2 className="section-title" style={{ marginBottom: 2 }}>
                 Виручка за 14 днів
               </h2>
-              <p className="subtle-meta">
-                Усього за 14 днів:{" "}
-                <strong className="num">{formatMoney(totalRevenue14d)}</strong>
+              <p className="subtle-meta tabular-nums">
+                Усього: <strong>{formatMoney(totalRevenue14d)}</strong> · Середня за день:{" "}
+                <strong>
+                  {formatMoney(
+                    revenueSeries.length > 0
+                      ? totalRevenue14d / revenueSeries.length
+                      : 0
+                  )}
+                </strong>
               </p>
             </div>
             {can("reports") && (
@@ -441,29 +447,55 @@ export default function DashboardPage() {
             )}
           </div>
 
-          <div className="bar-chart-14d" role="img" aria-label="Стовпчиковий графік виручки за 14 днів">
-            {revenueSeries.map((pt) => {
-              const amt = Number(pt.amount || 0);
-              const heightPct = amt > 0 ? Math.max(6, Math.round((amt / maxRevenue14d) * 100)) : 2;
-              return (
-                <div
-                  key={pt.date}
-                  className="bar-col-14d"
-                  title={`${formatDate(pt.date)}: ${formatMoney(amt)}`}
-                >
-                  <div className="bar-col-amount num">
-                    {amt > 0 ? `${Math.round(amt)}` : ""}
-                  </div>
-                  <div className="bar-col-track">
-                    <div
-                      className={`bar-col-fill ${amt === 0 ? "empty" : ""}`}
-                      style={{ height: `${heightPct}%` }}
-                    />
-                  </div>
-                  <div className="bar-col-label num">{pt.label}</div>
+          <div
+            className="chart-canvas-wrap"
+            role="img"
+            aria-label="Стовпчиковий графік виручки за 14 днів"
+          >
+            {/* Горизонтальні лінії сітки відліку */}
+            <div className="chart-grid-lines" aria-hidden="true">
+              {[1, 0.75, 0.5, 0.25, 0].map((ratio) => (
+                <div key={ratio} className="chart-grid-line">
+                  <span className="chart-axis-label tabular-nums">
+                    {Math.round(maxRevenue14d * ratio)} ₴
+                  </span>
                 </div>
-              );
-            })}
+              ))}
+            </div>
+
+            <div className="bar-chart-14d">
+              {revenueSeries.map((pt, idx) => {
+                const amt = Number(pt.amount || 0);
+                const heightPct =
+                  amt > 0 ? Math.max(6, Math.round((amt / maxRevenue14d) * 100)) : 2;
+                const isPeak = amt > 0 && amt === maxRevenue14d;
+                const isLatest = idx === revenueSeries.length - 1;
+                return (
+                  <div
+                    key={pt.date}
+                    className={`bar-col-14d ${isPeak || isLatest ? "highlight" : ""}`}
+                    title={`${formatDate(pt.date)}: ${formatMoney(amt)}`}
+                  >
+                    <div className="bar-col-amount tabular-nums">
+                      {amt > 0 ? `${Math.round(amt)}` : ""}
+                    </div>
+                    <div className="bar-col-track">
+                      <div
+                        className={`bar-col-fill ${
+                          amt === 0
+                            ? "empty"
+                            : isPeak || isLatest
+                            ? "accent"
+                            : "muted-bar"
+                        }`}
+                        style={{ height: `${heightPct}%` }}
+                      />
+                    </div>
+                    <div className="bar-col-label tabular-nums">{pt.label}</div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
