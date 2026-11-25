@@ -537,6 +537,9 @@ def close_shift(
     shift.review_status = "очікує"
 
     db.commit()
+    from .payroll import sync_closed_shifts_to_work_logs
+
+    sync_closed_shifts_to_work_logs(db, shift.club_id)
     db.refresh(shift)
     return _to_shift_read(db, shift, include_details=True)
 
@@ -591,6 +594,9 @@ def force_close_shift(
     shift.review_status = "очікує"
 
     db.commit()
+    from .payroll import sync_closed_shifts_to_work_logs
+
+    sync_closed_shifts_to_work_logs(db, shift.club_id)
     db.refresh(shift)
     return _to_shift_read(db, shift, include_details=True)
 

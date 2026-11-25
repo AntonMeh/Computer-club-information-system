@@ -62,6 +62,14 @@ def get_hall(
             mins, est_amount = calculate_duration_and_amount(
                 act.start_time, now, act.price_per_hour
             )
+            pay = act.payment
+            if act.is_prepaid and pay is not None:
+                est_amount = Decimal(pay.amount).quantize(Decimal("0.01"))
+            remaining_seconds = (
+                max(0, int((act.planned_end_time - now).total_seconds()))
+                if act.planned_end_time is not None
+                else None
+            )
             client = act.client
             tariff = act.tariff
             active_payload = schemas.HallActiveSession(
@@ -76,8 +84,15 @@ def get_hall(
                 tariff_name=tariff.name if tariff else "",
                 price_per_hour=Decimal(act.price_per_hour).quantize(Decimal("0.01")),
                 start_time=act.start_time,
+                planned_minutes=act.planned_minutes,
+                planned_end_time=act.planned_end_time,
+                is_prepaid=bool(act.is_prepaid),
+                payment_id=pay.payment_id if pay else None,
+                payment_amount=Decimal(pay.amount).quantize(Decimal("0.01")) if pay else None,
+                payment_method=pay.method if pay else None,
                 elapsed_seconds=elapsed_seconds,
                 elapsed_minutes=mins,
+                remaining_seconds=remaining_seconds,
                 estimated_amount=est_amount,
             )
 

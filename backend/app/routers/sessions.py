@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 import math
 
@@ -60,10 +60,17 @@ def _to_session_read(
     bonus_earned: Decimal | None = None,
     bonus_spent: Decimal | None = None,
 ) -> schemas.SessionRead:
-    ref_end = s.end_time or now or datetime.now()
+    ref_now = now or datetime.now()
+    ref_end = s.end_time or ref_now
     mins, calc_amount = calculate_duration_and_amount(s.start_time, ref_end, s.price_per_hour)
+    if s.is_prepaid and s.planned_minutes is not None and s.end_time is None:
+        mins = s.planned_minutes
     if s.status == "скасований":
         calc_amount = Decimal("0.00")
+
+    remaining_seconds: int | None = None
+    if s.status == "активний" and s.planned_end_time is not None:
+        remaining_seconds = max(0, int((s.planned_end_time - ref_now).total_seconds()))
 
     pay = s.payment
     final_amount = Decimal(pay.amount).quantize(Decimal("0.01")) if pay else calc_amount
@@ -102,6 +109,10 @@ def _to_session_read(
         price_per_hour=Decimal(s.price_per_hour).quantize(Decimal("0.01")),
         start_time=s.start_time,
         end_time=s.end_time,
+        planned_minutes=s.planned_minutes,
+        planned_end_time=s.planned_end_time,
+        is_prepaid=bool(s.is_prepaid),
+        remaining_seconds=remaining_seconds,
         status=s.status,
         duration_minutes=mins,
         calculated_amount=final_amount,
@@ -173,7 +184,7 @@ def list_sessions(
     total_amount = sum(
         (r.payment_amount or Decimal("0.00"))
         for r in all_reads
-        if r.status == "завершений" and r.payment_amount is not None
+        if r.status in ("активний", "завершений") and r.payment_amount is not None
     )
 
     sliced = all_reads[offset : offset + limit]
@@ -289,17 +300,66 @@ def start_session(
         )
 
     now = datetime.now()
+    price_per_hour = Decimal(tariff.price_per_hour).quantize(Decimal("0.01"))
+    planned_minutes: int | None = None
+    planned_end_time: datetime | None = None
+    is_prepaid = False
+    fixed_amount: Decimal | None = None
+    bonus_earned = Decimal("0.00")
+    bonus_spent = Decimal("0.00")
+
+    if data.planned_hours is not None:
+        if not data.payment_method:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "Оберіть спосіб оплати для фіксованого часу гри",
+            )
+        planned_minutes = max(15, int(round(float(data.planned_hours) * 60)))
+        planned_end_time = now + timedelta(minutes=planned_minutes)
+        fixed_amount = (
+            Decimal(planned_minutes) * price_per_hour / Decimal(60)
+        ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+        if data.payment_method == "бонуси":
+            current_bonus = Decimal(client.bonus_balance).quantize(Decimal("0.01"))
+            if current_bonus < fixed_amount:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    f"Недостатньо бонусів для передоплати (доступно {current_bonus} ₴, потрібно {fixed_amount} ₴)",
+                )
+            client.bonus_balance = (current_bonus - fixed_amount).quantize(Decimal("0.01"))
+            bonus_spent = fixed_amount
+        else:
+            bonus_earned = calculate_bonus_earned(fixed_amount)
+            client.bonus_balance = (Decimal(client.bonus_balance) + bonus_earned).quantize(
+                Decimal("0.01")
+            )
+        is_prepaid = True
+
     new_session = models.GameSession(
         client_id=client.client_id,
         workstation_id=ws.workstation_id,
         tariff_id=tariff.tariff_id,
-        price_per_hour=Decimal(tariff.price_per_hour).quantize(Decimal("0.01")),
+        price_per_hour=price_per_hour,
         start_time=now,
+        planned_minutes=planned_minutes,
+        planned_end_time=planned_end_time,
+        is_prepaid=is_prepaid,
         status="активний",
     )
     ws.status = "зайняте"
     db.add(new_session)
     try:
+        db.flush()
+        if is_prepaid and fixed_amount is not None and data.payment_method is not None:
+            payment = models.Payment(
+                session_id=new_session.session_id,
+                shift_id=open_shift.shift_id,
+                amount=fixed_amount,
+                payment_date=now,
+                method=data.payment_method,
+            )
+            db.add(payment)
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -309,7 +369,12 @@ def start_session(
         )
 
     db.refresh(new_session)
-    return _to_session_read(new_session, now=now)
+    return _to_session_read(
+        new_session,
+        now=now,
+        bonus_earned=bonus_earned,
+        bonus_spent=bonus_spent,
+    )
 
 
 @router.post("/{session_id}/finish", response_model=schemas.SessionRead)
@@ -329,6 +394,26 @@ def finish_session(
             "Сеанс уже завершено або скасовано",
         )
 
+    now = datetime.now()
+    # На випадок, якщо в тесті start_time випадково опиниться після now на мілісекунди
+    if now < s.start_time:
+        now = s.start_time
+
+    # Якщо сеанс вже оплачений наперед — просто завершуємо його та звільняємо місце без повторної оплати
+    if s.is_prepaid and s.payment is not None:
+        s.end_time = now
+        s.status = "завершений"
+        s.workstation.status = "вільне"
+        db.commit()
+        db.refresh(s)
+        return _to_session_read(s, now=now)
+
+    if not data.method:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Оберіть спосіб оплати",
+        )
+
     # Правило 8.1 п. 2 та п. 3: оплата прив'язується до відкритої зміни клубу в момент завершення
     open_shift = db.scalar(
         select(models.Shift).where(
@@ -341,11 +426,6 @@ def finish_session(
             status.HTTP_409_CONFLICT,
             "Зміну не відкрито. Відкрийте зміну, щоб завершити сеанс і прийняти оплату",
         )
-
-    now = datetime.now()
-    # На випадок, якщо в тесті start_time випадково опиниться після now на мілісекунди
-    if now < s.start_time:
-        now = s.start_time
 
     _, amount = calculate_duration_and_amount(s.start_time, now, s.price_per_hour)
     client = s.client
@@ -408,6 +488,12 @@ def cancel_session(
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             "Сеанс уже завершено або скасовано",
+        )
+
+    if s.is_prepaid and s.payment is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Оплачений наперед сеанс не можна скасувати — завершіть його, щоб звільнити місце",
         )
 
     now = datetime.now()

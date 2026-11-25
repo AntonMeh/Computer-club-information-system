@@ -217,6 +217,18 @@ class WorkstationRead(BaseModel):
 
 
 # ---------- Staff ----------
+DEFAULT_POSITION_RATES: dict[str, Decimal] = {
+    "Директор клубу": Decimal("280.00"),
+    "Заступник директора (адміністратор клубу)": Decimal("220.00"),
+    "Оператор-адміністратор залу": Decimal("165.00"),
+    "Технічний персонал": Decimal("135.00"),
+    "Бухгалтер": Decimal("210.00"),
+    "Системний адміністратор": Decimal("200.00"),
+    "Менеджер з реклами та маркетингу": Decimal("175.00"),
+    "Менеджер з організації турнірів та заходів": Decimal("180.00"),
+}
+
+
 class StaffBase(BaseModel):
     club_id: int
     full_name: str = Field(min_length=1, max_length=100)
@@ -225,6 +237,7 @@ class StaffBase(BaseModel):
 
 class StaffCreate(StaffBase):
     hire_date: date_type | None = None
+    hourly_rate: Decimal | None = Field(default=None, gt=0, le=Decimal("99999.99"))
 
 
 class StaffUpdate(BaseModel):
@@ -232,6 +245,7 @@ class StaffUpdate(BaseModel):
     full_name: str | None = Field(default=None, min_length=1, max_length=100)
     position: str | None = Field(default=None, min_length=1, max_length=50)
     hire_date: date_type | None = None
+    hourly_rate: Decimal | None = Field(default=None, gt=0, le=Decimal("99999.99"))
 
 
 class StaffRead(StaffBase):
@@ -239,6 +253,7 @@ class StaffRead(StaffBase):
     staff_id: int
     club_name: str | None = None
     hire_date: date_type
+    hourly_rate: Decimal = Decimal("160.00")
 
 
 class OrgChartMember(BaseModel):
@@ -247,6 +262,7 @@ class OrgChartMember(BaseModel):
     hire_date: date_type
     club_id: int
     club_name: str
+    hourly_rate: Decimal = Decimal("160.00")
 
 
 class OrgChartNode(BaseModel):
@@ -320,8 +336,15 @@ class HallActiveSession(BaseModel):
     tariff_name: str
     price_per_hour: Decimal
     start_time: datetime
+    planned_minutes: int | None = None
+    planned_end_time: datetime | None = None
+    is_prepaid: bool = False
+    payment_id: int | None = None
+    payment_amount: Decimal | None = None
+    payment_method: str | None = None
     elapsed_seconds: int
     elapsed_minutes: int
+    remaining_seconds: int | None = None
     estimated_amount: Decimal
 
 
@@ -359,15 +382,24 @@ class SessionCreate(BaseModel):
     client_id: int | None = None
     new_client_name: str | None = Field(default=None, max_length=100)
     new_client_phone: str | None = Field(default=None, max_length=20)
+    planned_hours: Decimal | None = Field(default=None, gt=0, le=Decimal("24"))
+    payment_method: str | None = Field(default=None, max_length=20)
+
+    @field_validator("payment_method")
+    @classmethod
+    def _validate_payment_method(cls, v: str | None) -> str | None:
+        if v is not None and v not in PAYMENT_METHODS:
+            raise ValueError(f"Спосіб оплати має бути одним із: {', '.join(PAYMENT_METHODS)}")
+        return v
 
 
 class SessionFinishRequest(BaseModel):
-    method: str = Field(min_length=1, max_length=20)
+    method: str | None = Field(default=None, max_length=20)
 
     @field_validator("method")
     @classmethod
-    def _validate_method(cls, v: str) -> str:
-        if v not in PAYMENT_METHODS:
+    def _validate_method(cls, v: str | None) -> str | None:
+        if v is not None and v not in PAYMENT_METHODS:
             raise ValueError(f"Спосіб оплати має бути одним із: {', '.join(PAYMENT_METHODS)}")
         return v
 
@@ -388,6 +420,10 @@ class SessionRead(BaseModel):
     price_per_hour: Decimal
     start_time: datetime
     end_time: datetime | None = None
+    planned_minutes: int | None = None
+    planned_end_time: datetime | None = None
+    is_prepaid: bool = False
+    remaining_seconds: int | None = None
     status: str
     duration_minutes: int
     calculated_amount: Decimal
@@ -956,3 +992,114 @@ class DailyCashResponse(BaseModel):
 
 
 
+
+
+# ---------- Зарплата та Табель годин (Бухгалтерія) ----------
+PAYROLL_PAYMENT_METHODS = ("картка", "готівка", "переказ")
+
+
+class WorkLogCreate(BaseModel):
+    staff_id: int
+    work_date: date_type | None = None
+    hours_worked: Decimal = Field(gt=0, le=Decimal("24.00"))
+    bonus_amount: Decimal = Field(default=Decimal("0.00"), ge=0, le=Decimal("999999.99"))
+    comment: str | None = Field(default=None, max_length=200)
+
+
+class WorkLogRead(BaseModel):
+    log_id: int
+    staff_id: int
+    staff_name: str
+    position: str
+    club_id: int
+    club_name: str
+    shift_id: int | None = None
+    shift_label: str | None = None
+    work_date: date_type
+    hours_worked: Decimal
+    hourly_rate_snapshot: Decimal
+    base_pay: Decimal
+    bonus_amount: Decimal
+    total_pay: Decimal
+    comment: str | None = None
+    created_at: datetime
+
+
+class PayrollPayoutCreate(BaseModel):
+    staff_id: int
+    period_from: date_type
+    period_to: date_type
+    hours_paid: Decimal = Field(default=Decimal("0.00"), ge=0)
+    base_amount: Decimal = Field(default=Decimal("0.00"), ge=0)
+    bonus_amount: Decimal = Field(default=Decimal("0.00"), ge=0)
+    amount_paid: Decimal = Field(gt=0, le=Decimal("9999999.99"))
+    payment_method: str = Field(default="картка", max_length=30)
+    note: str | None = Field(default=None, max_length=200)
+    create_expense: bool = True
+
+    @field_validator("payment_method")
+    @classmethod
+    def _validate_method(cls, v: str) -> str:
+        if v not in PAYROLL_PAYMENT_METHODS:
+            raise ValueError(
+                f"Спосіб виплати має бути одним із: {', '.join(PAYROLL_PAYMENT_METHODS)}"
+            )
+        return v
+
+
+class PayrollPayoutRead(BaseModel):
+    payout_id: int
+    staff_id: int
+    staff_name: str
+    position: str
+    club_id: int
+    club_name: str
+    expense_id: int | None = None
+    period_from: date_type
+    period_to: date_type
+    hours_paid: Decimal
+    base_amount: Decimal
+    bonus_amount: Decimal
+    amount_paid: Decimal
+    payment_method: str
+    paid_at: datetime
+    paid_by_name: str | None = None
+    note: str | None = None
+
+
+class StaffPayrollRow(BaseModel):
+    staff_id: int
+    full_name: str
+    position: str
+    club_id: int
+    club_name: str
+    hire_date: date_type
+    hourly_rate: Decimal
+    shifts_count: int
+    hours_worked: Decimal
+    base_pay: Decimal
+    bonus_pay: Decimal
+    total_accrued: Decimal
+    total_paid: Decimal
+    balance_due: Decimal
+    status: str  # виплачено / частково / очікує виплати / немає нарахувань
+    work_logs: list[WorkLogRead] = []
+    payouts: list[PayrollPayoutRead] = []
+
+
+class PayrollSummary(BaseModel):
+    staff_count: int
+    total_hours: Decimal
+    total_base_pay: Decimal
+    total_bonus_pay: Decimal
+    total_accrued: Decimal
+    total_paid: Decimal
+    total_balance_due: Decimal
+
+
+class PayrollReportResponse(BaseModel):
+    date_from: date_type
+    date_to: date_type
+    summary: PayrollSummary
+    items: list[StaffPayrollRow]
+    recent_payouts: list[PayrollPayoutRead]

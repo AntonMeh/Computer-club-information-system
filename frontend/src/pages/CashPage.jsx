@@ -11,6 +11,7 @@ import {
   FileSpreadsheet,
   FileText,
   Landmark,
+  Wallet,
 } from "lucide-react";
 import { api, getToken } from "../api.js";
 import { Badge } from "../components/Badge.jsx";
@@ -286,6 +287,11 @@ export default function CashPage() {
               <span>Операції</span>
             </button>
           </div>
+
+          <Link to="/payroll" className="btn btn-secondary">
+            <Wallet size={15} aria-hidden="true" />
+            <span>Зарплата і табель</span>
+          </Link>
 
           <button
             type="button"

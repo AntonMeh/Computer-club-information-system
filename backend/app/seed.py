@@ -14,7 +14,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from . import models
+from . import models, schemas
 from .database import Base, SessionLocal
 from .security import hash_password
 
@@ -186,8 +186,11 @@ def seed(db: Session, now: datetime | None = None) -> dict[str, int]:
     # Співробітники
     staff_members = [
         models.Staff(
-            club_id=clubs[club_idx].club_id, full_name=name, position=position,
+            club_id=clubs[club_idx].club_id,
+            full_name=name,
+            position=position,
             hire_date=today - timedelta(days=days_ago),
+            hourly_rate=schemas.DEFAULT_POSITION_RATES.get(position, Decimal("160.00")),
         )
         for club_idx, name, position, days_ago in STAFF
     ]
@@ -350,13 +353,120 @@ def seed(db: Session, now: datetime | None = None) -> dict[str, int]:
     ))
 
     # Витрати
-    db.add_all(
+    expense_objs = [
         models.Expense(
             club_id=clubs[club_idx].club_id, category=category, amount=_money(amount),
             expense_date=today - timedelta(days=days_ago), description=description,
         )
         for club_idx, category, amount, days_ago, description in EXPENSES
-    )
+    ]
+    db.add_all(expense_objs)
+    db.flush()
+
+    # Табель відпрацьованих годин (StaffWorkLog) для кожного співробітника
+    work_logs: list[models.StaffWorkLog] = [
+        # 1) Автоматично з двох закритих касових змін
+        models.StaffWorkLog(
+            staff_id=staff_members[2].staff_id,  # Богдан Савчук
+            club_id=clubs[0].club_id,
+            shift_id=closed_shift_0.shift_id,
+            work_date=today - timedelta(days=1),
+            hours_worked=_money("14.00"),
+            hourly_rate_snapshot=staff_members[2].hourly_rate,
+            bonus_amount=_money("300.00"),
+            comment="Касова зміна Z-0001 (денна + вечірня)",
+            created_at=datetime.combine(today - timedelta(days=1), time(22, 0)),
+            created_by_user_id=admin_uid,
+        ),
+        models.StaffWorkLog(
+            staff_id=staff_members[0].staff_id,  # Віктор Романенко
+            club_id=clubs[1].club_id,
+            shift_id=closed_shift_1.shift_id,
+            work_date=today - timedelta(days=1),
+            hours_worked=_money("12.00"),
+            hourly_rate_snapshot=staff_members[0].hourly_rate,
+            bonus_amount=_money("0.00"),
+            comment="Касова зміна Z-0001 (Cyberion Дніпровський)",
+            created_at=datetime.combine(today - timedelta(days=1), time(21, 0)),
+            created_by_user_id=dir_uid,
+        ),
+    ]
+
+    # 2) Регулярні зміни за поточний місяць для всіх співробітників
+    sample_shifts_per_staff = [
+        (0, 8, "8.00", "0.00", "Управління мережею та фінансовий контроль"),
+        (1, 7, "10.00", "250.00", "Адміністрування зміни та інвентаризація"),
+        (1, 4, "10.00", "0.00", "Чергування старшого адміністратора"),
+        (2, 5, "12.00", "200.00", "Денна зміна в залі"),
+        (2, 3, "12.00", "0.00", "Нічна зміна в залі"),
+        (3, 6, "12.00", "150.00", "Чергування в залі (вихідний день)"),
+        (3, 2, "12.00", "0.00", "Денна зміна в залі"),
+        (4, 5, "8.00", "400.00", "Оновлення образів ПК та діагностика мережі"),
+        (4, 2, "6.00", "0.00", "Профілактика VIP-зони"),
+        (5, 4, "8.00", "0.00", "Перевірка Z-звітів та зведення каси"),
+        (5, 1, "8.00", "0.00", "Формування зарплатної відомості та P&L"),
+        (6, 5, "8.00", "300.00", "Запуск рекламної кампанії турніру CS2"),
+        (7, 3, "10.00", "500.00", "Підготовка сітки та регламенту CS2 Weekend Cup"),
+        (8, 6, "10.00", "200.00", "Керування філією Cyberion Дніпровський"),
+        (9, 4, "12.00", "0.00", "Зміна в залі Cyberion Дніпровський"),
+        (9, 2, "12.00", "150.00", "Вечірня зміна в залі"),
+        (10, 3, "8.00", "0.00", "Обслуговування консолей та ПК філії"),
+    ]
+    for st_idx, days_ago, hrs, bon, comm in sample_shifts_per_staff:
+        member = staff_members[st_idx]
+        w_date = max(today.replace(day=1), today - timedelta(days=days_ago))
+        work_logs.append(
+            models.StaffWorkLog(
+                staff_id=member.staff_id,
+                club_id=member.club_id,
+                shift_id=None,
+                work_date=w_date,
+                hours_worked=_money(hrs),
+                hourly_rate_snapshot=member.hourly_rate,
+                bonus_amount=_money(bon),
+                comment=comm,
+                created_at=datetime.combine(w_date, time(18, 0)),
+                created_by_user_id=acc_uid,
+            )
+        )
+    db.add_all(work_logs)
+    db.flush()
+
+    # Виплати зарплати (аванс / часткова виплата)
+    month_start = today.replace(day=1)
+    db.add_all([
+        models.PayrollPayout(
+            staff_id=staff_members[2].staff_id,  # Богдан Савчук
+            club_id=clubs[0].club_id,
+            expense_id=expense_objs[2].expense_id,
+            period_from=month_start,
+            period_to=today,
+            hours_paid=_money("24.00"),
+            base_amount=_money("3960.00"),
+            bonus_amount=_money("200.00"),
+            amount_paid=_money("4160.00"),
+            payment_method="картка",
+            paid_at=datetime.combine(max(month_start, today - timedelta(days=2)), time(15, 30)),
+            paid_by_user_id=acc_uid,
+            note="Аванс за першу половину місяця (24 год)",
+        ),
+        models.PayrollPayout(
+            staff_id=staff_members[5].staff_id,  # Ірина Остапенко
+            club_id=clubs[0].club_id,
+            expense_id=expense_objs[2].expense_id,
+            period_from=month_start,
+            period_to=today,
+            hours_paid=_money("16.00"),
+            base_amount=_money("3360.00"),
+            bonus_amount=_money("0.00"),
+            amount_paid=_money("3360.00"),
+            payment_method="картка",
+            paid_at=datetime.combine(max(month_start, today - timedelta(days=1)), time(17, 0)),
+            paid_by_user_id=dir_uid,
+            note="Повна виплата за відпрацьовані години",
+        ),
+    ])
+    db.flush()
 
     # Турніри та участь
     upcoming = models.Tournament(

@@ -11,6 +11,7 @@ import ExpensesPage from "./pages/ExpensesPage.jsx";
 import HallPage from "./pages/HallPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import PaymentsPage from "./pages/PaymentsPage.jsx";
+import PayrollPage from "./pages/PayrollPage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
 import ReportsPage from "./pages/ReportsPage.jsx";
 import SessionsPage from "./pages/SessionsPage.jsx";
@@ -175,6 +176,15 @@ export default function App() {
                 element={
                   <RequireSection section="cash">
                     <ZReportPage />
+                  </RequireSection>
+                }
+              />
+
+              <Route
+                path="/payroll"
+                element={
+                  <RequireSection section="cash">
+                    <PayrollPage />
                   </RequireSection>
                 }
               />

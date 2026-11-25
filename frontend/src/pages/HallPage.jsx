@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   CheckCircle2,
+  Clock,
   Cpu,
   Gamepad2,
   Headphones,
@@ -11,6 +12,7 @@ import {
   Monitor,
   Play,
   Plus,
+  Receipt,
   RefreshCw,
   Square,
   Wrench,
@@ -26,11 +28,12 @@ import {
   ReceiptModal,
   StartSessionDrawer,
   calcLiveSession,
+  calcRemainingSeconds,
   formatTimerHMS,
 } from "../components/SessionModals.jsx";
 import { useToast } from "../components/Toast.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
-import { formatMoney, formatTime } from "../format.js";
+import { formatDuration, formatMoney, formatTime } from "../format.js";
 
 const WS_TYPES = ["Standard", "VIP", "PlayStation"];
 
@@ -115,6 +118,7 @@ export default function HallPage() {
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
   const [receiptPaymentId, setReceiptPaymentId] = useState(null);
+  const [receiptExtra, setReceiptExtra] = useState(null);
   const [specWs, setSpecWs] = useState(null);
 
   const activeClubId = selectedClubId || hallData?.club_id || clubs[0]?.club_id || null;
@@ -200,12 +204,28 @@ export default function HallPage() {
   const openFinishForWs = (ws) => {
     const act = ws.active_session;
     if (!act) return;
+    if (act.is_prepaid) {
+      releasePrepaidSession(ws);
+      return;
+    }
     setFinishTarget({
       ...act,
       workstation_id: ws.workstation_id,
       workstation_number: ws.number,
       workstation_type: ws.type,
     });
+  };
+
+  const releasePrepaidSession = async (ws) => {
+    const act = ws.active_session;
+    if (!act) return;
+    try {
+      await api.post(`/sessions/${act.session_id}/finish`, {});
+      toast.success(`Сеанс на місці № ${ws.number} завершено, місце вільне`);
+      await loadHall(true);
+    } catch (err) {
+      toast.error(err.message);
+    }
   };
 
   const toggleRepair = async (ws) => {
@@ -422,18 +442,35 @@ export default function HallPage() {
             const live = act
               ? calcLiveSession(act.start_time, act.price_per_hour, nowMs)
               : null;
+            const isFixed = Boolean(act?.planned_end_time);
+            const remainingSec = isFixed
+              ? calcRemainingSeconds(act.planned_end_time, nowMs)
+              : null;
+            const totalPlannedSec =
+              isFixed && act.planned_minutes ? act.planned_minutes * 60 : null;
+            const progressPct =
+              isFixed && totalPlannedSec && remainingSec != null
+                ? Math.min(100, Math.max(0, (remainingSec / totalPlannedSec) * 100))
+                : 0;
+            const isExpired = isFixed && remainingSec === 0;
+            const isExpiring = isFixed && remainingSec != null && remainingSec > 0 && remainingSec <= 600;
             const statusClass =
               ws.status === "вільне"
                 ? "free"
                 : ws.status === "зайняте"
                   ? "busy"
                   : "repair";
+            const timerStateClass = isExpired
+              ? "hall-card-expired"
+              : isExpiring
+                ? "hall-card-expiring"
+                : "";
             const specInfo = WORKSTATION_SPECS[ws.type] || WORKSTATION_SPECS.Standard;
 
             return (
               <article
                 key={ws.workstation_id}
-                className={`hall-card hall-card-${statusClass}`}
+                className={`hall-card hall-card-${statusClass} ${timerStateClass}`}
                 tabIndex={0}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && e.target === e.currentTarget) {
@@ -531,41 +568,125 @@ export default function HallPage() {
                       </Link>
                       <span className="subtle-meta tabular-nums">
                         {act.tariff_name} · з {formatTime(act.start_time)}
+                        {isFixed && act.planned_end_time
+                          ? ` до ${formatTime(act.planned_end_time)}`
+                          : ""}
                       </span>
                     </div>
 
-                    <div className="hall-live-row tabular-nums">
-                      <span className="hall-timer">{formatTimerHMS(live.elapsedSec)}</span>
-                      <span className="hall-live-cost">≈ {formatMoney(live.amount)}</span>
-                    </div>
+                    {isFixed ? (
+                      <div className="hall-countdown-wrap tabular-nums">
+                        <div className="hall-countdown-top">
+                          <span
+                            className={`hall-countdown-label ${
+                              isExpired
+                                ? "is-expired"
+                                : isExpiring
+                                  ? "is-expiring"
+                                  : ""
+                            }`}
+                          >
+                            <Clock size={12} aria-hidden="true" />
+                            <span>{isExpired ? "Час вийшов" : "Залишилось"}</span>
+                          </span>
+                          <span className="hall-prepaid-pill">
+                            Оплачено · {formatMoney(act.payment_amount ?? act.estimated_amount)}
+                          </span>
+                        </div>
+                        <div className="hall-countdown-main">
+                          <span
+                            className={`hall-timer ${
+                              isExpired
+                                ? "is-expired"
+                                : isExpiring
+                                  ? "is-expiring"
+                                  : ""
+                            }`}
+                          >
+                            {formatTimerHMS(remainingSec ?? 0)}
+                          </span>
+                          <span className="subtle-meta">
+                            з {formatDuration(act.planned_minutes)}
+                          </span>
+                        </div>
+                        <div className="hall-countdown-bar" aria-hidden="true">
+                          <div
+                            className={`hall-countdown-fill ${
+                              isExpired
+                                ? "is-expired"
+                                : isExpiring
+                                  ? "is-expiring"
+                                  : ""
+                            }`}
+                            style={{ width: `${progressPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="hall-live-row tabular-nums">
+                        <span className="hall-timer">{formatTimerHMS(live.elapsedSec)}</span>
+                        <span className="hall-live-cost">≈ {formatMoney(live.amount)}</span>
+                      </div>
+                    )}
 
                     {canManageSessions && (
                       <div className="hall-card-actions">
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm hall-main-btn"
-                          disabled={!isShiftOpen}
-                          title={!isShiftOpen ? "Спочатку відкрийте зміну" : undefined}
-                          onClick={() => openFinishForWs(ws)}
-                        >
-                          <Square size={14} aria-hidden="true" />
-                          <span>Завершити</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm hall-sub-btn"
-                          title="Скасувати помилково розпочатий сеанс"
-                          onClick={() =>
-                            setCancelTarget({
-                              session_id: act.session_id,
-                              workstation_number: ws.number,
-                              client_name: act.client_name,
-                            })
-                          }
-                        >
-                          <XCircle size={14} aria-hidden="true" />
-                          <span>Скасувати</span>
-                        </button>
+                        {act.is_prepaid ? (
+                          <>
+                            <button
+                              type="button"
+                              className={`btn btn-sm hall-main-btn ${
+                                isExpired ? "btn-primary" : "btn-secondary"
+                              }`}
+                              onClick={() => releasePrepaidSession(ws)}
+                            >
+                              <CheckCircle2 size={14} aria-hidden="true" />
+                              <span>Звільнити місце</span>
+                            </button>
+                            {act.payment_id && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm hall-sub-btn"
+                                title="Відкрити чек оплати"
+                                onClick={() => {
+                                  setReceiptExtra(null);
+                                  setReceiptPaymentId(act.payment_id);
+                                }}
+                              >
+                                <Receipt size={14} aria-hidden="true" />
+                                <span>Чек</span>
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm hall-main-btn"
+                              disabled={!isShiftOpen}
+                              title={!isShiftOpen ? "Спочатку відкрийте зміну" : undefined}
+                              onClick={() => openFinishForWs(ws)}
+                            >
+                              <Square size={14} aria-hidden="true" />
+                              <span>Завершити</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm hall-sub-btn"
+                              title="Скасувати помилково розпочатий сеанс"
+                              onClick={() =>
+                                setCancelTarget({
+                                  session_id: act.session_id,
+                                  workstation_number: ws.number,
+                                  client_name: act.client_name,
+                                })
+                              }
+                            >
+                              <XCircle size={14} aria-hidden="true" />
+                              <span>Скасувати</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -615,6 +736,11 @@ export default function HallPage() {
                 const live = act
                   ? calcLiveSession(act.start_time, act.price_per_hour, nowMs)
                   : null;
+                const isFixed = Boolean(act?.planned_end_time);
+                const remainingSec = isFixed
+                  ? calcRemainingSeconds(act.planned_end_time, nowMs)
+                  : null;
+                const isExpired = isFixed && remainingSec === 0;
                 const specInfo = WORKSTATION_SPECS[ws.type] || WORKSTATION_SPECS.Standard;
                 return (
                   <tr key={ws.workstation_id}>
@@ -661,10 +787,24 @@ export default function HallPage() {
                       {act ? formatTime(act.start_time) : "—"}
                     </td>
                     <td className="num tabular-nums font-medium">
-                      {live ? formatTimerHMS(live.elapsedSec) : "—"}
+                      {isFixed ? (
+                        <span className={isExpired ? "text-danger" : ""}>
+                          {isExpired
+                            ? "Час вийшов"
+                            : `Залиш. ${formatTimerHMS(remainingSec ?? 0)}`}
+                        </span>
+                      ) : live ? (
+                        formatTimerHMS(live.elapsedSec)
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="num tabular-nums font-medium">
-                      {live ? `≈ ${formatMoney(live.amount)}` : "—"}
+                      {act?.is_prepaid
+                        ? `Оплачено ${formatMoney(act.payment_amount ?? act.estimated_amount)}`
+                        : live
+                          ? `≈ ${formatMoney(live.amount)}`
+                          : "—"}
                     </td>
                     <td className="actions">
                       <div className="row-actions">
@@ -681,31 +821,57 @@ export default function HallPage() {
                           </button>
                         )}
                         {ws.status === "зайняте" && act && canManageSessions && (
-                          <>
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              disabled={!isShiftOpen}
-                              title={!isShiftOpen ? "Спочатку відкрийте зміну" : undefined}
-                              onClick={() => openFinishForWs(ws)}
-                            >
-                              <Square size={14} />
-                              <span>Завершити</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              onClick={() =>
-                                setCancelTarget({
-                                  session_id: act.session_id,
-                                  workstation_number: ws.number,
-                                  client_name: act.client_name,
-                                })
-                              }
-                            >
-                              Скасувати
-                            </button>
-                          </>
+                          act.is_prepaid ? (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                onClick={() => releasePrepaidSession(ws)}
+                              >
+                                <CheckCircle2 size={14} />
+                                <span>Звільнити</span>
+                              </button>
+                              {act.payment_id && (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => {
+                                    setReceiptExtra(null);
+                                    setReceiptPaymentId(act.payment_id);
+                                  }}
+                                >
+                                  <Receipt size={14} />
+                                  <span>Чек</span>
+                                </button>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                disabled={!isShiftOpen}
+                                title={!isShiftOpen ? "Спочатку відкрийте зміну" : undefined}
+                                onClick={() => openFinishForWs(ws)}
+                              >
+                                <Square size={14} />
+                                <span>Завершити</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() =>
+                                  setCancelTarget({
+                                    session_id: act.session_id,
+                                    workstation_number: ws.number,
+                                    client_name: act.client_name,
+                                  })
+                                }
+                              >
+                                Скасувати
+                              </button>
+                            </>
+                          )
                         )}
                         {ws.status !== "зайняте" && canRepair && (
                           <button
@@ -855,7 +1021,18 @@ export default function HallPage() {
         presetWorkstation={presetWs}
         freeWorkstations={freeWorkstations}
         tariffs={tariffs}
-        onStarted={() => loadHall(true)}
+        onStarted={(started) => {
+          loadHall(true);
+          if (started?.payment_id) {
+            setReceiptExtra({
+              cash_given: started.cash_given ?? null,
+              change_amount: started.change_amount ?? null,
+              bonus_earned: started.bonus_earned ?? null,
+              bonus_spent: started.bonus_spent ?? null,
+            });
+            setReceiptPaymentId(started.payment_id);
+          }
+        }}
       />
 
       <FinishSessionModal
@@ -865,6 +1042,12 @@ export default function HallPage() {
         onFinished={(finished) => {
           loadHall(true);
           if (finished?.payment_id) {
+            setReceiptExtra({
+              cash_given: finished.cash_given ?? null,
+              change_amount: finished.change_amount ?? null,
+              bonus_earned: finished.bonus_earned ?? null,
+              bonus_spent: finished.bonus_spent ?? null,
+            });
             setReceiptPaymentId(finished.payment_id);
           }
         }}
@@ -873,7 +1056,11 @@ export default function HallPage() {
       <ReceiptModal
         open={Boolean(receiptPaymentId)}
         paymentId={receiptPaymentId}
-        onClose={() => setReceiptPaymentId(null)}
+        extraInfo={receiptExtra}
+        onClose={() => {
+          setReceiptPaymentId(null);
+          setReceiptExtra(null);
+        }}
       />
 
       <ConfirmDialog

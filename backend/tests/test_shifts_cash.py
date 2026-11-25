@@ -392,3 +392,176 @@ def test_rules_9_10_11_12_13_force_close_review_daily_and_alerts(client, db, shi
     assert client.get("/cash/daily/export.csv", headers=h_dir).status_code == 200
     assert client.get("/shifts/export.csv", headers=h_dir).status_code == 200
     assert client.get("/cash-operations/export.csv", headers=h_dir).status_code == 200
+
+
+
+def test_payroll_hourly_accrual_and_payout_expense_integration(client, db, shift_env):
+    h_dir = shift_env["h_dir"]
+    h_acc = shift_env["h_acc"]
+    club1 = shift_env["club1"]
+
+    staff_member = models.Staff(
+        club_id=club1.club_id,
+        full_name="Богдан Савчук",
+        position="Оператор-адміністратор залу",
+        hourly_rate=Decimal("165.00"),
+    )
+    db.add(staff_member)
+    db.commit()
+
+    # Бухгалтер оновлює погодинну ставку до 180.00 ₴/год
+    r_rate = client.patch(
+        f"/staff/{staff_member.staff_id}",
+        headers=h_acc,
+        json={"hourly_rate": 180.00},
+    )
+    assert r_rate.status_code == 200
+    assert Decimal(r_rate.json()["hourly_rate"]) == Decimal("180.00")
+
+    # Внесення 10 годин у табель + 200 ₴ премії -> 10 * 180 + 200 = 2000.00 ₴
+    r_log = client.post(
+        "/payroll/work-logs",
+        headers=h_acc,
+        json={
+            "staff_id": staff_member.staff_id,
+            "hours_worked": 10.0,
+            "bonus_amount": 200.0,
+            "comment": "Денна зміна 10 год",
+        },
+    )
+    assert r_log.status_code == 201
+    log_data = r_log.json()
+    assert Decimal(log_data["base_pay"]) == Decimal("1800.00")
+    assert Decimal(log_data["total_pay"]) == Decimal("2000.00")
+
+    # Перевірка відомості /payroll
+    rep = client.get("/payroll", headers=h_acc).json()
+    assert Decimal(rep["summary"]["total_hours"]) == Decimal("10.00")
+    assert Decimal(rep["summary"]["total_accrued"]) == Decimal("2000.00")
+    assert Decimal(rep["summary"]["total_balance_due"]) == Decimal("2000.00")
+
+    # Проведення виплати 2000.00 ₴ з автоматичним створенням витрати 'зарплата'
+    today_str = datetime.now().date().isoformat()
+    r_pay = client.post(
+        "/payroll/payouts",
+        headers=h_acc,
+        json={
+            "staff_id": staff_member.staff_id,
+            "period_from": today_str,
+            "period_to": today_str,
+            "hours_paid": 10.0,
+            "base_amount": 1800.0,
+            "bonus_amount": 200.0,
+            "amount_paid": 2000.0,
+            "payment_method": "картка",
+            "note": "Зарплата за 10 год",
+            "create_expense": True,
+        },
+    )
+    assert r_pay.status_code == 201
+    payout = r_pay.json()
+    assert payout["expense_id"] is not None
+
+    # Перевіряємо, що залишок до виплати став 0.00 ₴ і статус 'виплачено'
+    rep_after = client.get("/payroll", headers=h_acc).json()
+    assert Decimal(rep_after["summary"]["total_paid"]) == Decimal("2000.00")
+    assert Decimal(rep_after["summary"]["total_balance_due"]) == Decimal("0.00")
+    assert rep_after["items"][0]["status"] == "виплачено"
+
+    # Перевіряємо CSV-експорт відомості
+    csv_res = client.get("/payroll/export.csv", headers=h_dir)
+    assert csv_res.status_code == 200
+    assert "Богдан Савчук" in csv_res.text
+
+
+def test_fixed_duration_prepaid_session_and_countdown(client, db, shift_env):
+    h_adm = shift_env["h_adm"]
+    club1 = shift_env["club1"]
+    ws1 = shift_env["ws2"]
+    tariff = shift_env["tariff_vip"]
+    cl = shift_env["customer"]
+
+    # Відкриваємо зміну
+    sh = client.post(
+        "/shifts",
+        headers=h_adm,
+        json={"club_id": club1.club_id, "opening_cash": 500.00},
+    ).json()
+    sh_id = sh["shift_id"]
+
+    # Спроба почати фіксований сеанс без способу оплати -> 422
+    r_bad = client.post(
+        "/sessions",
+        headers=h_adm,
+        json={
+            "client_id": cl.client_id,
+            "workstation_id": ws1.workstation_id,
+            "tariff_id": tariff.tariff_id,
+            "planned_hours": 2,
+        },
+    )
+    assert r_bad.status_code == 422
+
+    # Старт фіксованого сеансу на 2 години з передоплатою карткою (120 ₴/год * 2 = 240.00 ₴)
+    r_start = client.post(
+        "/sessions",
+        headers=h_adm,
+        json={
+            "client_id": cl.client_id,
+            "workstation_id": ws1.workstation_id,
+            "tariff_id": tariff.tariff_id,
+            "planned_hours": 2,
+            "payment_method": "картка",
+        },
+    )
+    assert r_start.status_code == 201, r_start.text
+    s = r_start.json()
+    assert s["is_prepaid"] is True
+    assert s["planned_minutes"] == 120
+    assert s["planned_end_time"] is not None
+    assert s["remaining_seconds"] is not None
+    assert 7000 <= s["remaining_seconds"] <= 7200
+    assert s["payment_id"] is not None
+    assert Decimal(s["payment_amount"]) == Decimal("240.00")
+    assert s["payment_method"] == "картка"
+    assert Decimal(s["bonus_earned"]) == Decimal("12.00")
+
+    # Перевіряємо, що зал (/hall) повертає remaining_seconds і статус передоплати
+    hall = client.get(f"/hall?club_id={club1.club_id}", headers=h_adm).json()
+    ws_item = next(w for w in hall["items"] if w["workstation_id"] == ws1.workstation_id)
+    assert ws_item["status"] == "зайняте"
+    act = ws_item["active_session"]
+    assert act["is_prepaid"] is True
+    assert act["planned_minutes"] == 120
+    assert act["remaining_seconds"] is not None and act["remaining_seconds"] > 7000
+    assert act["payment_id"] == s["payment_id"]
+    assert Decimal(act["payment_amount"]) == Decimal("240.00")
+
+    # Перевіряємо чек оплати (/payments/{id}): показує 120 хв і прив'язку до зміни
+    pay = client.get(f"/payments/{s['payment_id']}", headers=h_adm).json()
+    assert pay["shift_id"] == sh_id
+    assert pay["duration_minutes"] == 120
+    assert Decimal(pay["amount"]) == Decimal("240.00")
+
+    # Скасувати оплачений наперед сеанс не можна -> 409
+    assert (
+        client.post(f"/sessions/{s['session_id']}/cancel", headers=h_adm).status_code == 409
+    )
+
+    # Завершення (звільнення місця) без повторної оплати
+    r_fin = client.post(
+        f"/sessions/{s['session_id']}/finish",
+        headers=h_adm,
+        json={},
+    )
+    assert r_fin.status_code == 200, r_fin.text
+    fin = r_fin.json()
+    assert fin["status"] == "завершений"
+    assert fin["payment_id"] == s["payment_id"]
+    assert Decimal(fin["payment_amount"]) == Decimal("240.00")
+
+    # Перевіряємо, що місце стало вільним
+    hall_after = client.get(f"/hall?club_id={club1.club_id}", headers=h_adm).json()
+    ws_after = next(w for w in hall_after["items"] if w["workstation_id"] == ws1.workstation_id)
+    assert ws_after["status"] == "вільне"
+    assert ws_after["active_session"] is None

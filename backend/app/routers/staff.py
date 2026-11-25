@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select, update
@@ -6,8 +7,8 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
-from ..deps import ensure_club_access, require, scoped_club_id
-from ..permissions import FULL, VIEW
+from ..deps import ensure_club_access, get_active_user, require, scoped_club_id
+from ..permissions import ACCOUNTANT, DIRECTOR, FULL, VIEW, allowed
 
 router = APIRouter(prefix="/staff", tags=["staff"])
 
@@ -32,6 +33,7 @@ def _get_or_404(db: Session, staff_id: int) -> models.Staff:
 
 
 def _enrich_staff(member: models.Staff) -> schemas.StaffRead:
+    default_rate = schemas.DEFAULT_POSITION_RATES.get(member.position, Decimal("160.00"))
     return schemas.StaffRead(
         staff_id=member.staff_id,
         club_id=member.club_id,
@@ -39,6 +41,7 @@ def _enrich_staff(member: models.Staff) -> schemas.StaffRead:
         full_name=member.full_name,
         position=member.position,
         hire_date=member.hire_date,
+        hourly_rate=Decimal(member.hourly_rate if member.hourly_rate is not None else default_rate),
     )
 
 
@@ -73,12 +76,14 @@ def get_org_chart(
 
     by_position: dict[str, list[schemas.OrgChartMember]] = {pos: [] for _, pos, _ in ORG_NODES}
     for m in members:
+        default_rate = schemas.DEFAULT_POSITION_RATES.get(m.position, Decimal("160.00"))
         item = schemas.OrgChartMember(
             staff_id=m.staff_id,
             full_name=m.full_name,
             hire_date=m.hire_date,
             club_id=m.club_id,
             club_name=m.club.name if m.club else "",
+            hourly_rate=Decimal(m.hourly_rate if m.hourly_rate is not None else default_rate),
         )
         by_position.setdefault(m.position, []).append(item)
 
@@ -106,6 +111,10 @@ def create_staff(
 
     values = data.model_dump()
     values["hire_date"] = values["hire_date"] or date.today()
+    if values.get("hourly_rate") is None:
+        values["hourly_rate"] = schemas.DEFAULT_POSITION_RATES.get(
+            values["position"], Decimal("160.00")
+        )
     member = models.Staff(**values)
     db.add(member)
     db.commit()
@@ -128,12 +137,19 @@ def get_staff(
 def update_staff(
     staff_id: int,
     data: schemas.StaffUpdate,
-    user: models.AppUser = Depends(require("staff", FULL)),
+    user: models.AppUser = Depends(get_active_user),
     db: Session = Depends(get_db),
 ):
+    updates = data.model_dump(exclude_unset=True)
+    # Бухгалтер може змінювати погодинну ставку (hourly_rate), а повне редагування кадрових даних — Директор
+    if not allowed(user.role, "staff", FULL):
+        if user.role == ACCOUNTANT and set(updates.keys()).issubset({"hourly_rate"}):
+            pass
+        else:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Недостатньо прав для зміни даних співробітника")
+
     member = _get_or_404(db, staff_id)
     ensure_club_access(user, member.club_id)
-    updates = data.model_dump(exclude_unset=True)
     if "club_id" in updates and updates["club_id"] is not None:
         ensure_club_access(user, updates["club_id"])
         if db.get(models.Club, updates["club_id"]) is None:

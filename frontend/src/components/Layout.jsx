@@ -13,6 +13,8 @@ import {
   Menu,
   Monitor,
   Moon,
+  PanelLeftClose,
+  PanelLeftOpen,
   PcCase,
   Receipt,
   ShieldCheck,
@@ -22,6 +24,7 @@ import {
   User,
   UserCog,
   Users,
+  Wallet,
   X,
 } from "lucide-react";
 import { api } from "../api.js";
@@ -52,6 +55,7 @@ export const NAV_GROUPS = [
       { to: "/payments", section: "payments", label: "Оплати", icon: CreditCard },
       { to: "/expenses", section: "expenses", label: "Витрати", icon: Receipt },
       { to: "/cash", section: "cash", label: "Каса", icon: Landmark },
+      { to: "/payroll", section: "cash", label: "Зарплата і табель", icon: Wallet },
       { to: "/reports", section: "reports", label: "Звіти", icon: BarChart3 },
     ],
   },
@@ -80,6 +84,7 @@ const PAGE_TITLES = {
   "/payments": "Оплати",
   "/expenses": "Витрати",
   "/cash": "Каса і Z-звіти",
+  "/payroll": "Бухгалтерія: Зарплата і табель",
   "/reports": "Звіти",
   "/tournaments": "Турніри",
   "/clubs": "Клуби",
@@ -120,8 +125,27 @@ export default function Layout() {
   const [now, setNow] = useState(() => new Date());
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("club_sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
   const [shiftInfo, setShiftInfo] = useState(null);
   const menuRef = useRef(null);
+
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("club_sidebar_collapsed", String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
 
   const effectiveIndicatorClubId =
     user?.club_id ?? selectedClubId ?? clubs[0]?.club_id ?? null;
@@ -205,7 +229,7 @@ export default function Layout() {
   };
 
   return (
-    <div className="shell">
+    <div className={`shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       {mobileNavOpen && (
         <div
           className="mobile-backdrop"
@@ -216,12 +240,21 @@ export default function Layout() {
 
       <aside className={`sidebar ${mobileNavOpen ? "open" : ""}`}>
         <div className="sidebar-top">
-          <Link to="/" className="brand">
+          <Link to="/" className="brand" title="Клубна система">
             <span className="brand-mark" aria-hidden="true">
               <Monitor size={15} />
             </span>
-            <span>Клубна система</span>
+            <span className="brand-text">Клубна система</span>
           </Link>
+          <button
+            type="button"
+            className="sidebar-collapse-btn"
+            aria-label={sidebarCollapsed ? "Розгорнути бічну панель" : "Згорнути бічну панель"}
+            title={sidebarCollapsed ? "Розгорнути меню" : "Згорнути меню"}
+            onClick={toggleSidebarCollapsed}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+          </button>
           <button
             type="button"
             className="mobile-close-btn"
@@ -243,6 +276,7 @@ export default function Layout() {
                     key={item.to}
                     to={item.to}
                     end={item.end}
+                    title={sidebarCollapsed ? item.label : undefined}
                     className={({ isActive }) => (isActive ? "nav-item active" : "nav-item")}
                   >
                     <Icon size={18} aria-hidden="true" />

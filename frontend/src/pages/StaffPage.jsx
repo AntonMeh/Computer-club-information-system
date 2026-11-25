@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { Edit2, GitBranch, List, Plus, Trash2, UserPlus } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Edit2, GitBranch, List, Plus, Trash2, UserPlus, Wallet } from "lucide-react";
 import { api } from "../api.js";
 import { Badge } from "../components/Badge.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
@@ -7,7 +8,7 @@ import Drawer from "../components/Drawer.jsx";
 import { EmptyState, ErrorState, SkeletonTable } from "../components/Feedback.jsx";
 import { useToast } from "../components/Toast.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
-import { formatDate } from "../format.js";
+import { formatDate, formatMoney } from "../format.js";
 
 const STAFF_POSITIONS = [
   "Директор клубу",
@@ -19,6 +20,17 @@ const STAFF_POSITIONS = [
   "Менеджер з реклами та маркетингу",
   "Менеджер з організації турнірів та заходів",
 ];
+
+const DEFAULT_RATES = {
+  "Директор клубу": "280.00",
+  "Заступник директора (адміністратор клубу)": "220.00",
+  "Оператор-адміністратор залу": "165.00",
+  "Технічний персонал": "135.00",
+  "Бухгалтер": "210.00",
+  "Системний адміністратор": "200.00",
+  "Менеджер з реклами та маркетингу": "175.00",
+  "Менеджер з організації турнірів та заходів": "180.00",
+};
 
 function todayIso() {
   const d = new Date();
@@ -66,6 +78,7 @@ export default function StaffPage() {
     position: STAFF_POSITIONS[2],
     club_id: "",
     hire_date: todayIso(),
+    hourly_rate: DEFAULT_RATES[STAFF_POSITIONS[2]],
   });
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -112,6 +125,7 @@ export default function StaffPage() {
       position: presetPosition,
       club_id: String(defaultClubId),
       hire_date: todayIso(),
+      hourly_rate: DEFAULT_RATES[presetPosition] || "160.00",
     });
     setFormError("");
     setDrawerOpen(true);
@@ -124,6 +138,11 @@ export default function StaffPage() {
       position: member.position || STAFF_POSITIONS[2],
       club_id: String(member.club_id || defaultClubId),
       hire_date: member.hire_date || todayIso(),
+      hourly_rate: String(
+        Number(
+          member.hourly_rate ?? DEFAULT_RATES[member.position] ?? 160
+        ).toFixed(2)
+      ),
     });
     setFormError("");
     setDrawerOpen(true);
@@ -134,8 +153,9 @@ export default function StaffPage() {
     setFormError("");
     const fullName = form.full_name.trim();
     const clubId = Number(form.club_id);
-    if (!fullName || !clubId || !form.position) {
-      setFormError("Заповніть ПІБ, посаду та клуб");
+    const rateNum = Number(form.hourly_rate || 160);
+    if (!fullName || !clubId || !form.position || !rateNum || rateNum <= 0) {
+      setFormError("Заповніть ПІБ, посаду, клуб та коректну погодинну ставку");
       return;
     }
 
@@ -146,6 +166,7 @@ export default function StaffPage() {
         position: form.position,
         club_id: clubId,
         hire_date: form.hire_date || null,
+        hourly_rate: Number(rateNum.toFixed(2)),
       };
       if (editingMember) {
         await api.patch(`/staff/${editingMember.staff_id}`, payload);
@@ -219,9 +240,9 @@ export default function StaffPage() {
             {node.members.map((m) => (
               <li key={m.staff_id} className="org-member-item">
                 <div className="org-member-name">{m.full_name}</div>
-                <div className="org-member-meta">
+                <div className="org-member-meta tabular-nums">
                   {!selectedClubId && m.club_name && <span>{m.club_name} · </span>}
-                  <span>з {formatDate(m.hire_date)}</span>
+                  <span>{formatMoney(m.hourly_rate)}/год · з {formatDate(m.hire_date)}</span>
                 </div>
               </li>
             ))}
@@ -258,6 +279,13 @@ export default function StaffPage() {
               <span>Оргструктура</span>
             </button>
           </div>
+
+          {can("cash", "view") && (
+            <Link to="/payroll" className="btn btn-secondary">
+              <Wallet size={16} aria-hidden="true" />
+              <span>Зарплата і табель</span>
+            </Link>
+          )}
 
           {canEdit && (
             <button type="button" className="btn btn-primary" onClick={() => openCreate()}>
@@ -309,6 +337,7 @@ export default function StaffPage() {
                     <th>ПІБ</th>
                     <th>Посада</th>
                     <th>Клуб</th>
+                    <th className="num">Ставка / год</th>
                     <th>Прийнятий</th>
                     <th>Стаж</th>
                     {canEdit && <th aria-label="Дії" className="actions-col" />}
@@ -320,6 +349,9 @@ export default function StaffPage() {
                       <td className="font-medium">{m.full_name}</td>
                       <td>{m.position}</td>
                       <td>{m.club_name || `Клуб № ${m.club_id}`}</td>
+                      <td className="num tabular-nums font-medium accent-text">
+                        {formatMoney(m.hourly_rate)}
+                      </td>
                       <td className="tabular-nums">{formatDate(m.hire_date)}</td>
                       <td className="tabular-nums">{formatTenure(m.hire_date)}</td>
                       {canEdit && (
@@ -418,7 +450,16 @@ export default function StaffPage() {
               id="staff-position"
               required
               value={form.position}
-              onChange={(e) => setForm({ ...form, position: e.target.value })}
+              onChange={(e) => {
+                const nextPos = e.target.value;
+                setForm({
+                  ...form,
+                  position: nextPos,
+                  hourly_rate: editingMember
+                    ? form.hourly_rate
+                    : DEFAULT_RATES[nextPos] || form.hourly_rate,
+                });
+              }}
             >
               {STAFF_POSITIONS.map((pos) => (
                 <option key={pos} value={pos}>
@@ -426,6 +467,22 @@ export default function StaffPage() {
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="field">
+            <label htmlFor="staff-rate" className="field-label">
+              Погодинна ставка (₴ / год) <span className="required-mark">*</span>
+            </label>
+            <input
+              id="staff-rate"
+              type="number"
+              step="5"
+              min="10"
+              required
+              className="tabular-nums"
+              value={form.hourly_rate}
+              onChange={(e) => setForm({ ...form, hourly_rate: e.target.value })}
+            />
           </div>
 
           <div className="field">

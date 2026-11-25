@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, Receipt, Search, Square, X, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Plus, Receipt, Search, Square, X, XCircle } from "lucide-react";
 import { api } from "../api.js";
 import { StatusBadge } from "../components/Badge.jsx";
 import ConfirmDialog from "../components/ConfirmDialog.jsx";
@@ -10,10 +10,12 @@ import {
   FinishSessionModal,
   ReceiptModal,
   StartSessionDrawer,
+  calcRemainingSeconds,
+  formatTimerHMS,
 } from "../components/SessionModals.jsx";
 import { useToast } from "../components/Toast.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
-import { formatDateTime, formatDuration, formatMoney } from "../format.js";
+import { formatDateTime, formatDuration, formatMoney, formatTime } from "../format.js";
 
 const PAGE_SIZE = 17;
 
@@ -63,6 +65,17 @@ export default function SessionsPage() {
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelling, setCancelling] = useState(false);
   const [receiptPaymentId, setReceiptPaymentId] = useState(null);
+  const [receiptExtra, setReceiptExtra] = useState(null);
+  const [nowMs, setNowMs] = useState(Date.now());
+
+  useEffect(() => {
+    const hasActiveFixed = sessions.some(
+      (s) => s.status === "активний" && Boolean(s.planned_end_time)
+    );
+    if (!hasActiveFixed) return;
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [sessions]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(searchInput.trim()), 300);
@@ -153,6 +166,18 @@ export default function SessionsPage() {
   const remainingPages = Math.max(0, totalPages - currentPage);
 
   const freeWorkstations = workstations.filter((w) => w.status === "вільне");
+
+  const releasePrepaidSession = async (s) => {
+    try {
+      await api.post(`/sessions/${s.session_id}/finish`, {});
+      toast.success(`Сеанс № ${s.session_id} завершено, місце № ${s.workstation_number} вільне`);
+      setDetailSession(null);
+      await load();
+      await loadAux();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
 
   const confirmCancel = async () => {
     if (!cancelTarget) return;
@@ -333,6 +358,10 @@ export default function SessionsPage() {
               <tbody>
                 {visibleSessions.map((s) => {
                   const isActive = s.status === "активний";
+                  const isFixedActive = isActive && Boolean(s.planned_end_time);
+                  const remainingSec = isFixedActive
+                    ? calcRemainingSeconds(s.planned_end_time, nowMs)
+                    : null;
                   return (
                     <tr
                       key={s.session_id}
@@ -352,7 +381,17 @@ export default function SessionsPage() {
                       <td>{s.tariff_name}</td>
                       <td className="tabular-nums">{formatDateTime(s.start_time)}</td>
                       <td className="tabular-nums">
-                        {isActive ? (
+                        {isFixedActive ? (
+                          <span
+                            className={`font-medium ${
+                              remainingSec === 0 ? "text-danger" : "accent-text"
+                            }`}
+                          >
+                            {remainingSec === 0
+                              ? "Час вийшов"
+                              : `Залиш. ${formatTimerHMS(remainingSec ?? 0)}`}
+                          </span>
+                        ) : isActive ? (
                           <span className="accent-text font-medium">триває</span>
                         ) : s.end_time ? (
                           formatDateTime(s.end_time)
@@ -361,13 +400,13 @@ export default function SessionsPage() {
                         )}
                       </td>
                       <td className="num tabular-nums">
-                        {isActive ? "≈ " : ""}
+                        {isActive && !s.is_prepaid ? "≈ " : ""}
                         {formatDuration(s.duration_minutes)}
                       </td>
                       <td className="num tabular-nums font-medium">
                         {s.status === "скасований"
                           ? "—"
-                          : `${isActive ? "≈ " : ""}${formatMoney(s.calculated_amount)}`}
+                          : `${isActive && !s.is_prepaid ? "≈ " : ""}${formatMoney(s.calculated_amount)}`}
                       </td>
                       <td>
                         {s.payment_method ? <StatusBadge status={s.payment_method} /> : "—"}
@@ -378,30 +417,44 @@ export default function SessionsPage() {
                       <td className="actions" onClick={(e) => e.stopPropagation()}>
                         <div className="row-actions">
                           {isActive && canManage && (
-                            <>
+                            s.is_prepaid ? (
                               <button
                                 type="button"
                                 className="btn btn-primary btn-sm"
-                                onClick={() => setFinishTarget(s)}
+                                onClick={() => releasePrepaidSession(s)}
                               >
-                                <Square size={13} />
-                                <span>Завершити</span>
+                                <CheckCircle2 size={13} />
+                                <span>Звільнити</span>
                               </button>
-                              <button
-                                type="button"
-                                className="btn btn-secondary btn-sm"
-                                onClick={() => setCancelTarget(s)}
-                              >
-                                <XCircle size={13} />
-                                <span>Скасувати</span>
-                              </button>
-                            </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary btn-sm"
+                                  onClick={() => setFinishTarget(s)}
+                                >
+                                  <Square size={13} />
+                                  <span>Завершити</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => setCancelTarget(s)}
+                                >
+                                  <XCircle size={13} />
+                                  <span>Скасувати</span>
+                                </button>
+                              </>
+                            )
                           )}
                           {s.payment_id && (
                             <button
                               type="button"
                               className="btn btn-secondary btn-sm"
-                              onClick={() => setReceiptPaymentId(s.payment_id)}
+                              onClick={() => {
+                                setReceiptExtra(null);
+                                setReceiptPaymentId(s.payment_id);
+                              }}
                             >
                               <Receipt size={13} />
                               <span>Чек</span>
@@ -511,9 +564,17 @@ export default function SessionsPage() {
                 <dd className="tabular-nums">
                   {detailSession.end_time
                     ? formatDateTime(detailSession.end_time)
-                    : "Триває зараз"}
+                    : detailSession.planned_end_time
+                      ? `Заплановано до ${formatTime(detailSession.planned_end_time)}`
+                      : "Триває зараз"}
                 </dd>
               </div>
+              {detailSession.is_prepaid && (
+                <div className="desc-row">
+                  <dt>Формат</dt>
+                  <dd>Фіксований час (передоплата)</dd>
+                </div>
+              )}
               <div className="desc-row">
                 <dt>Тривалість</dt>
                 <dd className="tabular-nums">{formatDuration(detailSession.duration_minutes)}</dd>
@@ -557,17 +618,27 @@ export default function SessionsPage() {
                 </button>
               )}
               {detailSession.status === "активний" && canManage && (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => {
-                    const target = detailSession;
-                    setDetailSession(null);
-                    setFinishTarget(target);
-                  }}
-                >
-                  Завершити сеанс
-                </button>
+                detailSession.is_prepaid ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => releasePrepaidSession(detailSession)}
+                  >
+                    Звільнити місце
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => {
+                      const target = detailSession;
+                      setDetailSession(null);
+                      setFinishTarget(target);
+                    }}
+                  >
+                    Завершити сеанс
+                  </button>
+                )
               )}
             </div>
           </div>
@@ -579,9 +650,18 @@ export default function SessionsPage() {
         onClose={() => setStartOpen(false)}
         freeWorkstations={freeWorkstations}
         tariffs={tariffs}
-        onStarted={() => {
+        onStarted={(started) => {
           load();
           loadAux();
+          if (started?.payment_id) {
+            setReceiptExtra({
+              cash_given: started.cash_given ?? null,
+              change_amount: started.change_amount ?? null,
+              bonus_earned: started.bonus_earned ?? null,
+              bonus_spent: started.bonus_spent ?? null,
+            });
+            setReceiptPaymentId(started.payment_id);
+          }
         }}
       />
 
@@ -593,6 +673,12 @@ export default function SessionsPage() {
           load();
           loadAux();
           if (finished?.payment_id) {
+            setReceiptExtra({
+              cash_given: finished.cash_given ?? null,
+              change_amount: finished.change_amount ?? null,
+              bonus_earned: finished.bonus_earned ?? null,
+              bonus_spent: finished.bonus_spent ?? null,
+            });
             setReceiptPaymentId(finished.payment_id);
           }
         }}
@@ -601,7 +687,11 @@ export default function SessionsPage() {
       <ReceiptModal
         open={Boolean(receiptPaymentId)}
         paymentId={receiptPaymentId}
-        onClose={() => setReceiptPaymentId(null)}
+        extraInfo={receiptExtra}
+        onClose={() => {
+          setReceiptPaymentId(null);
+          setReceiptExtra(null);
+        }}
       />
 
       <ConfirmDialog

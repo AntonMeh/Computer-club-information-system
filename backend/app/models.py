@@ -101,6 +101,9 @@ class GameSession(Base):
     price_per_hour: Mapped[Decimal] = mapped_column(Numeric(8, 2))
     start_time: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     end_time: Mapped[datetime | None] = mapped_column(DateTime)
+    planned_minutes: Mapped[int | None] = mapped_column(default=None)
+    planned_end_time: Mapped[datetime | None] = mapped_column(DateTime, default=None)
+    is_prepaid: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(20), default="активний")  # активний / завершений / скасований
 
     client: Mapped["Client"] = relationship(back_populates="sessions")
@@ -131,8 +134,15 @@ class Staff(Base):
     full_name: Mapped[str] = mapped_column(String(100))
     position: Mapped[str] = mapped_column(String(50))
     hire_date: Mapped[date] = mapped_column(Date, default=date.today)
+    hourly_rate: Mapped[Decimal] = mapped_column(Numeric(8, 2), default=Decimal("160.00"))
 
     club: Mapped["Club"] = relationship(back_populates="staff")
+    work_logs: Mapped[list["StaffWorkLog"]] = relationship(
+        back_populates="staff", cascade="all, delete-orphan"
+    )
+    payouts: Mapped[list["PayrollPayout"]] = relationship(
+        back_populates="staff", cascade="all, delete-orphan"
+    )
 
 
 class Tournament(Base):
@@ -300,3 +310,63 @@ class CashOperation(Base):
     shift: Mapped["Shift"] = relationship(back_populates="operations")
     club: Mapped["Club"] = relationship()
     created_by: Mapped["AppUser"] = relationship()
+
+
+
+class StaffWorkLog(Base):
+    """Табель обліку відпрацьованих годин співробітників (для нарахування зарплати)."""
+
+    __tablename__ = "staff_work_log"
+    __table_args__ = (
+        CheckConstraint(
+            "hours_worked > 0 AND hours_worked <= 24",
+            name="ck_staff_work_log_hours_range",
+        ),
+        CheckConstraint("bonus_amount >= 0", name="ck_staff_work_log_bonus_nonnegative"),
+    )
+
+    log_id: Mapped[int] = mapped_column(primary_key=True)
+    staff_id: Mapped[int] = mapped_column(ForeignKey("staff.staff_id"))
+    club_id: Mapped[int] = mapped_column(ForeignKey("club.club_id"))
+    shift_id: Mapped[int | None] = mapped_column(ForeignKey("shift.shift_id"), unique=True)
+    work_date: Mapped[date_type] = mapped_column(Date, default=date.today)
+    hours_worked: Mapped[Decimal] = mapped_column(Numeric(5, 2))
+    hourly_rate_snapshot: Mapped[Decimal] = mapped_column(Numeric(8, 2))
+    bonus_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+    comment: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.user_id"))
+
+    staff: Mapped["Staff"] = relationship(back_populates="work_logs")
+    club: Mapped["Club"] = relationship()
+    shift: Mapped["Shift | None"] = relationship()
+    created_by: Mapped["AppUser | None"] = relationship()
+
+
+class PayrollPayout(Base):
+    """Виплата заробітної плати співробітнику за період (інтегрована зі статтею витрат 'зарплата')."""
+
+    __tablename__ = "payroll_payout"
+    __table_args__ = (
+        CheckConstraint("amount_paid > 0", name="ck_payroll_payout_amount_positive"),
+    )
+
+    payout_id: Mapped[int] = mapped_column(primary_key=True)
+    staff_id: Mapped[int] = mapped_column(ForeignKey("staff.staff_id"))
+    club_id: Mapped[int] = mapped_column(ForeignKey("club.club_id"))
+    expense_id: Mapped[int | None] = mapped_column(ForeignKey("expense.expense_id"))
+    period_from: Mapped[date_type] = mapped_column(Date)
+    period_to: Mapped[date_type] = mapped_column(Date)
+    hours_paid: Mapped[Decimal] = mapped_column(Numeric(6, 2), default=Decimal("0.00"))
+    base_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+    bonus_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"))
+    amount_paid: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    payment_method: Mapped[str] = mapped_column(String(30), default="картка")  # картка / готівка / переказ
+    paid_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    paid_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.user_id"))
+    note: Mapped[str | None] = mapped_column(String(200))
+
+    staff: Mapped["Staff"] = relationship(back_populates="payouts")
+    club: Mapped["Club"] = relationship()
+    expense: Mapped["Expense | None"] = relationship()
+    paid_by: Mapped["AppUser | None"] = relationship()

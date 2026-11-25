@@ -23,8 +23,17 @@ def _to_payment_read(p: models.Payment) -> schemas.PaymentRead:
     client = s.client if s else None
     tariff = s.tariff if s else None
 
-    end_ref = s.end_time or p.payment_date
-    mins, _ = calculate_duration_and_amount(s.start_time, end_ref, s.price_per_hour)
+    if s and s.is_prepaid and s.planned_minutes is not None and s.end_time is None:
+        mins = s.planned_minutes
+        display_end_time = s.planned_end_time
+    else:
+        end_ref = (s.end_time if s else None) or p.payment_date
+        mins, _ = (
+            calculate_duration_and_amount(s.start_time, end_ref, s.price_per_hour)
+            if s
+            else (1, Decimal("0.00"))
+        )
+        display_end_time = s.end_time if s else p.payment_date
 
     sh = p.shift
     sh_z = sh.z_number if sh else None
@@ -59,7 +68,7 @@ def _to_payment_read(p: models.Payment) -> schemas.PaymentRead:
         if s
         else Decimal("0.00"),
         start_time=s.start_time if s else p.payment_date,
-        end_time=s.end_time if s else p.payment_date,
+        end_time=display_end_time,
         duration_minutes=mins,
     )
 
